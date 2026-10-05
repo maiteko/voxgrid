@@ -1,0 +1,19 @@
+[package]
+name = "cube_log_coord"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+index64 = []
+serde = ["dep:serde","glam/serde"]
+bytemuck = ["dep:bytemuck","glam/bytemuck"]
+
+[dependencies]
+anyhow = "1.0.104"
+bytemuck = { version = "1.25.2", features = ["derive"], optional = true }
+glam = { version = "0.34.0" }
+lazy_static = "1.5.1"
+num = "0.4.3"
+num-traits = "0.2.19"
+serde = { version = "1.0.229", features = ["derive"], optional = true }
