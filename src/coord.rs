@@ -47,7 +47,7 @@ impl Coord {
     });
     pub const ORIGIN: Self = Self(IndexVec { x: 0, y: 0, z: 0 });
 
-    pub const fn new(x: i32, y: i32, z: i32) -> Self {
+    pub const fn new(x: Index, y: Index, z: Index) -> Self {
         Self(IndexVec { x, y, z })
     }
 

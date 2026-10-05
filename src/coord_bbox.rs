@@ -108,9 +108,7 @@ impl CoordBBox {
     }
 
     pub fn is_divisible(&self) -> bool {
-        self.min.component_ge(&self.max);
-
-        true
+        !self.min.component_ge(&self.max)
     }
 
     pub fn min_extent(&self) -> usize {
@@ -262,13 +260,15 @@ impl CoordBBox {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let bbox\_min = Coord::new(0, 0, 0);
-    /// let bbox\_max = Coord::new(10, 10, 10);
+    /// ```
+    /// use cube_log_coord::{Coord, CoordBBox};
     ///
-    /// let boundary = bbox\_min.boundary\_direction(&Coord::new(10, 0, 5));
+    /// let min = Coord::new(0, 0, 0);
+    /// let max = Coord::new(10, 10, 10);
     ///
-    /// assert\_eq!(boundary, Coord::new(1, -1, 0));
+    /// let boundary = CoordBBox::new(min, max).boundary_direction(&Coord::new(10, 0, 5));
+    ///
+    /// assert_eq!(boundary, Coord::new(1, -1, 0));
     /// ```
     pub fn boundary_direction(&self, coord: &Coord) -> Coord {
         -self.min.match_axes(coord) + self.max.match_axes(coord)
@@ -300,11 +300,20 @@ impl CoordBBox {
     ///
     /// # Examples
     ///
-    /// ```ignore
-    /// let boundary = Coord::new(1, 1, 1);
-    /// let directions = boundary.touching\_directions();
+    /// ```
+    /// use cube_log_coord::{Coord, CoordBBox};
+    /// let boundary = CoordBBox::new(Coord::new(-1,-1,-1), Coord::new(1,1,1));
+    /// let coord = Coord::new(1,1,1);
+    /// let directions = boundary.touching_neighbors(&coord);
+    /// assert_eq!(directions.len(), 7);
     ///
-    /// assert\_eq!(directions.len(), 7);
+    /// let coord = Coord::new(0,0,0);
+    /// let directions = boundary.touching_neighbors(&coord);
+    /// assert_eq!(directions.len(), 0);
+    ///
+    /// let coord = Coord::new(0,1,0);
+    /// let directions = boundary.touching_neighbors(&coord);
+    /// assert_eq!(directions.len(), 1);
     /// ```
     pub fn touching_neighbors(&self, pos: &Coord) -> Vec<Coord> {
         let boundary = self.boundary_direction(pos);
@@ -313,7 +322,7 @@ impl CoordBBox {
             return Vec::default();
         }
 
-        (1..8)
+        (1..8 as Index)
             .filter_map(|mask| {
                 let coord = Coord::new(
                     if mask & 0b001 != 0 { boundary.x } else { 0 },

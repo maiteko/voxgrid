@@ -1,41 +1,45 @@
+//! The following tables respect the following conventions
+//!
+//! <pre>
+//!    6-------7
+//!   /|      /|
+//!  / |     / |  Corners
+//! 2-------3  |
+//! |  4----|--5
+//! | /     | /     y z
+//! |/      |/      |/   Godot 4 axis convention (right handed)
+//! 0-------1       o--x
+//! </pre>
+//!
+//! Sides are ordered according to the Side enum.
+//!
+//! <pre>
+//!     o---11----o
+//!    /|        /|
+//!   6 9       7 10   Face Edges
+//!  /  |      /  |
+//! o----5----o   |
+//! |   o---8-|---o
+//! 1  /      3  /
+//! | 2       | 4
+//! |/        |/
+//! o----0----o
+//! </pre>
+//!
+//! Edges are ordered according to the Edge enum (only g_edge_inormals!).
+
 use crate::Coord;
 use glam::{U8Vec2, Vec3};
 use lazy_static::lazy_static;
+use num_enum::{FromPrimitive, IntoPrimitive};
 use std::panic;
 
 const SQRT_2: f64 = 1.4142135;
 const SQRT_3: f64 = 1.7320508;
 
-// The following tables respect the following conventions
-//
-//    6-------7
-//   /|      /|
-//  / |     / |  Corners
-// 2-------3  |
-// |  4----|--5
-// | /     | /     y z
-// |/      |/      |/   Godot 4 axis convention (right handed)
-// 0-------1       o--x
-//
-// Sides are ordered according to the Voxel::Side enum.
-//
-//     o---11----o
-//    /|        /|
-//   6 9       7 10   Face Edges
-//  /  |      /  |
-// o----5----o   |
-// |   o---8-|---o
-// 1  /      3  /
-// | 2       | 4
-// |/        |/
-// o----0----o
-//
-// Edges are ordered according to the Voxel::Edge enum (only g_edge_inormals!).
-//
-
 // Index convention used in some lookup tables
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Side {
     Left = 0,
     Right,
@@ -49,20 +53,6 @@ pub enum Side {
     Unknown,
 }
 
-impl From<usize> for Side {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => Self::Left,
-            1 => Self::Right,
-            2 => Self::Bottom,
-            3 => Self::Top,
-            4 => Self::Back,
-            5 => Self::Front,
-            6.. => Self::Unknown,
-        }
-    }
-}
-
 // TODO We should use this naming system, taken from Minecraft:
 // - West: -X
 // - East: +X
@@ -73,7 +63,7 @@ impl From<usize> for Side {
 
 // Alias to the above for clarity, fixing some interpretation problems regarding the side_normals table...
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum SideAxis {
     /// Negative X
     West = 0,
@@ -93,63 +83,23 @@ pub enum SideAxis {
     Unknown,
 }
 
-impl From<usize> for SideAxis {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => Self::West,
-            1 => Self::East,
-            2 => Self::Down,
-            3 => Self::Up,
-            4 => Self::North,
-            5 => Self::South,
-            _ => Self::Unknown,
-        }
+impl From<Side> for SideAxis {
+    fn from(value: Side) -> Self {
+        let value: usize = value.into();
+        value.into()
     }
 }
 
 impl From<SideAxis> for Side {
     fn from(value: SideAxis) -> Self {
-        match value {
-            SideAxis::West => Self::Left,
-            SideAxis::East => Self::Right,
-            SideAxis::Down => Self::Bottom,
-            SideAxis::Up => Self::Top,
-            SideAxis::North => Self::Back,
-            SideAxis::South => Self::Front,
-            _ => Self::Unknown,
-        }
-    }
-}
-
-impl From<SideAxis> for usize {
-    fn from(value: SideAxis) -> Self {
-        value as usize
-    }
-}
-
-impl From<Side> for usize {
-    fn from(value: Side) -> Self {
-        value as usize
-    }
-}
-
-impl From<Side> for SideAxis {
-    fn from(value: Side) -> Self {
-        match value {
-            Side::Left => Self::West,
-            Side::Right => Self::East,
-            Side::Bottom => Self::Down,
-            Side::Top => Self::Up,
-            Side::Back => Self::North,
-            Side::Front => Self::South,
-            _ => Self::Unknown,
-        }
+        let value: usize = value.into();
+        value.into()
     }
 }
 
 // Index into CUBE_EDGES table
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Edge {
     SouthDown = 0,
     SouthWest,
@@ -170,7 +120,7 @@ pub enum Edge {
 
 // Index convention used in some lookup tables
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Corner {
     SouthWestDown = 0,
     SouthEastDown,
@@ -187,7 +137,7 @@ pub enum Corner {
 }
 
 #[repr(usize)]
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Neighbor {
     SouthWestDown = 0,
     SouthDown,
@@ -222,26 +172,24 @@ pub enum Neighbor {
     Unknown,
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct MooreNeighbor {
     pub n_offset: Coord,
     pub n_distance: f64,
 }
 
 lazy_static! {
-   /// CUBE_EDGES: list of the 12 undirected edges of a unit cube as pairs of vertex indices. Each tuple
+   /// list of the 12 undirected edges of a unit cube as pairs of vertex indices. Each U8Vec2
    /// (a, b) is an edge between vertex a and vertex b. Vertex numbering follows the convention:
    /// index = x + 4*y + 16*z (Z outermost → Y middle → X innermost).
    ///
    /// The table is built by iterating i=0..7, j=0..2 and connecting corner `i` with
    /// `i^(1<<j)` when they differ. Edges only appear where one endpoint has the bit set.
    ///
-   ///
+   /// Corner Diagram
    ///
    /// <pre>
-   ///  Corner Diagram
-   ///
-   ///     z
+   ///      z
    ///     /
    ///    6----7
    ///   /|   /|
@@ -260,7 +208,7 @@ lazy_static! {
    /// 8: (4,5)    9: (4,6)
    /// 10:(5,7)    11:(6,7)
    ///
-    pub static ref CUBE_EDGES: [U8Vec2;12] = {
+    pub static ref EDGES: [U8Vec2;12] = {
         let mut cube_edges = Vec::<U8Vec2>::with_capacity(12);
 
         for i in 0..8 {
@@ -309,8 +257,8 @@ lazy_static! {
         for i in 0..256 {
             let mut edge_mask = 0;
             for j in 0..12 {
-                let a = (i & (1<<CUBE_EDGES[j].x)) != 0;
-                let b = (i & (1<<CUBE_EDGES[j].y)) != 0;
+                let a = (i & (1<<EDGES[j].x)) != 0;
+                let b = (i & (1<<EDGES[j].y)) != 0;
 
                 edge_mask |= if a != b {
                     1 << j
@@ -324,14 +272,13 @@ lazy_static! {
         edge_table
     };
 
-    /// VOXEL_CORNERS: coordinates of the 8 cube corner positions in local voxel space.
+    /// coordinates of the 8 cube corner positions in local voxel space.
     /// Each entry is a Vector3(x, y, z) with coordinates in {0.0, 1.0}. The ordering
     /// matches CUBE_EDGES and EDGE_INTERSECTIONS vertex numbering (vertices 0..7):
     ///
     /// Generated with Z outermost, Y middle, X innermost:
     /// index = x + 4*z + 16*y
     ///
-    /// <pre>
     ///    6-------7
     ///   /|      /|
     ///  / |     / |  Corners
@@ -340,14 +287,13 @@ lazy_static! {
     /// | /     | /     y z
     /// |/      |/      |/   Godot 4 axis convention (right handed)
     /// 0-------1       o--x
-    /// </pre>
     ///
     /// Index mapping:
     ///   0: (0, 0, 0)    1: (1, 0, 0)
     ///   2: (0, 1, 0)    3: (1, 1, 0)
     ///   4: (0, 0, 1)    5: (1, 0, 1)
     ///   6: (0, 1, 1)    7: (1, 1, 1)
-    pub static ref VOXEL_CORNER_OFFSETS: [Vec3; 8] = {
+    pub static ref CORNER_OFFSETS: [Vec3; 8] = {
         let mut corners = Vec::<Vec3>::with_capacity(8);
 
         // z outermost, y middle, X innermost -> index = x + 4*y + 16*z (XYZ ordering)
@@ -366,9 +312,9 @@ lazy_static! {
     pub static ref EDGE_NORMALS: [Vec3; Edge::Count as usize] = {
         let mut normals = Vec::<Vec3>::with_capacity(Edge::Count as usize);
 
-        for edge in *CUBE_EDGES {
-            let ca = VOXEL_CORNER_OFFSETS[edge.x as usize];
-            let cb = VOXEL_CORNER_OFFSETS[edge.y as usize];
+        for edge in *EDGES {
+            let ca = CORNER_OFFSETS[edge.x as usize];
+            let cb = CORNER_OFFSETS[edge.y as usize];
 
             // find the axis along which the two corners differ -> edge direction
             let dx = cb.x - ca.x;
@@ -394,7 +340,7 @@ lazy_static! {
     pub static ref CORNER_NORMALS: [Vec3; Corner::Count as usize] = {
         let mut normals = Vec::<Vec3>::with_capacity(Corner::Count as usize);
 
-        for corner in *VOXEL_CORNER_OFFSETS {
+        for corner in *CORNER_OFFSETS {
 
             let nx = if corner.x == 0. { -1 } else { 1 };
             let ny = if corner.y == 0. { -1 } else { 1 };
@@ -505,6 +451,7 @@ pub const SIDE_EDGES: [[usize; 4]; Side::Count as usize] = [
 pub const SIDE_NEIGHBORING_DISTANCES: [f32; 6] = [1.0; 6];
 
 pub fn dir_to_side(d: Coord) -> Option<Side> {
+    let d = d.unit_clamp();
     for i in 0..Side::Count as usize {
         if SIDE_NORMALS[i] == d {
             return Some(i.into());
