@@ -1,4 +1,4 @@
-//! The following tables respect the following conventions
+//! Tables in the cube module all respect the following conventions
 //!
 //! <pre>
 //!    6-------7

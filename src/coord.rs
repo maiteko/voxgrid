@@ -1,7 +1,13 @@
-#[cfg(feature = "bytemuck")]
-use bytemuck::{Pod, Zeroable};
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+//! 3D integer coordinates.
+//!
+//! [`Coord`] is a newtype over a `glam` integer vector (`IndexVec`) that provides
+//! the arithmetic, comparison, and conversion operations needed to address voxel
+//! grids. It derefs to the underlying vector, so `glam` component access (`.x`,
+//! `.y`, `.z`) and vector math are available directly.
+//!
+//! The module also defines the [`CoordRound`] rounding trait and, via macros, a
+//! large family of `From`/operator conversions between `Coord` and the common
+//! `glam` integer and floating-point vector types, 3-element arrays, and tuples.
 
 use glam::Vec3Swizzles;
 use num::NumCast;
@@ -12,8 +18,26 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+#[cfg(feature = "bytemuck")]
+use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub use super::*;
 
+/// A 3D integer coordinate for addressing a voxel grid.
+///
+/// `Coord` wraps a `glam` integer vector (`IndexVec`) and implements `Deref`/
+/// `DerefMut`, so the underlying `.x`, `.y`, `.z` fields and `glam` vector
+/// operations are usable directly. The element type is `i32` by default and
+/// `i64` under the `index64` feature.
+///
+/// ```
+/// use voxgrid::Coord;
+///
+/// let p = Coord::new(1, 2, 3).offset_by(4, 5, 6);
+/// assert_eq!(p, Coord::new(5, 7, 9));
+/// ```
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "bytemuck", derive(Zeroable, Pod))]
@@ -33,7 +57,7 @@ impl Deref for Coord {
         &self.0
     }
 }
-/// Coordinate class for i64ing into a voxel grid.
+/// Methods for offsetting, clamping, and comparing `Coord` values.
 impl Coord {
     pub const MIN: Self = Self(IndexVec {
         x: Index::MIN,

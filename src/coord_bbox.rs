@@ -1,11 +1,33 @@
+//! Axis-aligned bounding boxes over [`Coord`].
+//!
+//! [`CoordBBox`] is a half-open-closed box defined by a `min` and `max` corner
+//! (both inclusive). It supports the common set of operations a voxel engine
+//! needs: enclosing points and boxes, intersection, expansion, translation,
+//! containment/overlap queries, and iterating over the coordinates it spans.
+//!
+//! Iteration is provided by [`BoxIterator`], parameterized by a const generic
+//! ordering flag. The [`XYZIterator`] alias walks innermost-x, outermost-z
+//! (cache-friendly for z-major data); the [`ZYXIterator`] alias is the reverse.
+
+use super::*;
+use anyhow::{Result, anyhow};
 use std::collections::HashSet;
 
-use crate::Index;
+#[cfg(feature = "bytemuck")]
+use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-use super::{coord::Coord, *};
-use anyhow::{Result, anyhow};
-
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+/// An axis-aligned bounding box with inclusive `min` and `max` corners.
+///
+/// The [`Default`] value is the empty box (`min == Coord::MAX`, `max ==
+/// `Coord::MIN`), which is convenient as an accumulator: call
+/// [`CoordBBox::enclose_point`] / [`CoordBBox::enclose_bbox`] to grow it from
+/// nothing. An empty box reports `empty() == true` and `volume() == 0`.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "bytemuck", derive(Zeroable, Pod))]
+#[repr(C)]
 pub struct CoordBBox {
     pub min: Coord,
     pub max: Coord,
@@ -261,7 +283,7 @@ impl CoordBBox {
     /// # Examples
     ///
     /// ```
-    /// use cube_log_coord::{Coord, CoordBBox};
+    /// use voxgrid::{Coord, CoordBBox};
     ///
     /// let min = Coord::new(0, 0, 0);
     /// let max = Coord::new(10, 10, 10);
@@ -277,7 +299,7 @@ impl CoordBBox {
     /// Returns all non-zero combinations of the supplied boundary direction.
     ///
     /// Each component in `boundary` must be `-1`, `0`, or `1`, as returned by
-    /// [`Coord::boundary_direction`]. A zero component is omitted from every
+    /// [`CoordBBox::boundary_direction`]. A zero component is omitted from every
     /// generated direction. Non-zero components may either be included or
     /// omitted, producing every combination of touching boundary directions.
     ///
@@ -301,7 +323,7 @@ impl CoordBBox {
     /// # Examples
     ///
     /// ```
-    /// use cube_log_coord::{Coord, CoordBBox};
+    /// use voxgrid::{Coord, CoordBBox};
     /// let boundary = CoordBBox::new(Coord::new(-1,-1,-1), Coord::new(1,1,1));
     /// let coord = Coord::new(1,1,1);
     /// let directions = boundary.touching_neighbors(&coord);
@@ -355,7 +377,7 @@ impl std::ops::Shr<u64> for CoordBBox {
 impl std::ops::ShrAssign<u64> for CoordBBox {
     fn shr_assign(&mut self, rhs: u64) {
         *self.min >>= rhs;
-        *self.max <<= rhs;
+        *self.max >>= rhs;
     }
 }
 
@@ -413,6 +435,13 @@ impl std::ops::BitOrAssign<Index> for CoordBBox {
     }
 }
 
+/// A lazy iterator over the coordinates spanned by a [`CoordBBox`].
+///
+/// The const generic `ZYX_ORDERING` selects the traversal order: when `true`
+/// (the [`ZYXIterator`] alias) the box is walked with `x` as the outermost
+/// dimension; when `false` (the [`XYZIterator`] alias) `x` is innermost.
+/// Both aliases are produced by [`CoordBBox::to_zyx_iter`] and
+/// [`CoordBBox::to_xyz_iter`] respectively.
 pub struct BoxIterator<const ZYX_ORDERING: bool> {
     next: Option<[i64; 3]>,
     min: [i64; 3],

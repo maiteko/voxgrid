@@ -1,14 +1,14 @@
 [package]
-name = "cube_log_coord"
+name = "voxgrid"
 version = "0.1.0"
 edition = "2024"
 authors = ["Sean Pace <sean.m.pace@outlook.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-description = ""
-keywords = []
-categories = [""]
-repository = ""
+description = "Voxel coordinate and bounding-box math with log-scaled voxel-tree addressing"
+keywords = ["voxel", "octree", "coordinate", "bounding-box", "godot"]
+categories = ["data-structures", "mathematics", "game-development"]
+# TODO: set your repository URL before publishing, e.g. repository = "https://github.com/you/voxgrid"
 
 [features]
 default = []
