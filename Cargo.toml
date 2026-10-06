@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["Sean Pace <sean.m.pace@outlook.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
+repository = "https://github.com/maiteko/voxgrid.git"
 description = "Voxel coordinate and bounding-box math with log-scaled voxel-tree addressing"
 keywords = ["voxel", "octree", "coordinate", "bounding-box", "godot"]
 categories = ["data-structures", "mathematics", "game-development"]
