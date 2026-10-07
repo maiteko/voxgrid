@@ -7,7 +7,7 @@
 //! 2-------3  |
 //! |  4----|--5
 //! | /     | /     y z
-//! |/      |/      |/   Godot 4 axis convention (right handed)
+//! |/      |/      |/   coordinates assume right handed conventions
 //! 0-------1       o--x
 //! </pre>
 //!
@@ -32,12 +32,14 @@ use crate::Coord;
 use glam::{U8Vec2, Vec3};
 use lazy_static::lazy_static;
 use num_enum::{FromPrimitive, IntoPrimitive};
-use std::panic;
+use std::{panic, slice::Iter};
 
 const SQRT_2: f64 = 1.4142135;
 const SQRT_3: f64 = 1.7320508;
 
-// Index convention used in some lookup tables
+/// The six faces of a cube. The first six variants (`Left`..`Front`) index the
+/// `SIDE_NORMALS`, `SIDE_TANGENTS`, `SIDE_CORNERS`, and `SIDE_EDGES` tables;
+/// `Count` is the number of real variants and `Unknown` is the default sentinel.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Side {
@@ -53,15 +55,9 @@ pub enum Side {
     Unknown,
 }
 
-// TODO We should use this naming system, taken from Minecraft:
-// - West: -X
-// - East: +X
-// - North: -Z
-// - South: +Z
-// - Down: -Y
-// - Up: +Y
-
-// Alias to the above for clarity, fixing some interpretation problems regarding the side_normals table...
+/// Face directions named by axis sign (Minecraft-style), interchangeable with
+/// `Side` via `From`. Uses West/East/Down/Up/North/South naming to make
+/// `SIDE_NORMALS` reasoning clearer.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum SideAxis {
@@ -97,7 +93,7 @@ impl From<SideAxis> for Side {
     }
 }
 
-// Index into CUBE_EDGES table
+/// The twelve edges of a cube, indexed into `EDGES` and `EDGE_NORMALS`.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Edge {
@@ -118,7 +114,39 @@ pub enum Edge {
     Unknown,
 }
 
-// Index convention used in some lookup tables
+const VALID_EDGES: [Edge; 12] = [
+    Edge::SouthDown,
+    Edge::SouthWest,
+    Edge::WestDown,
+    Edge::SouthEast,
+    Edge::EastDown,
+    Edge::SouthUp,
+    Edge::EastUp,
+    Edge::WestUp,
+    Edge::NorthDown,
+    Edge::NorthWest,
+    Edge::NorthEast,
+    Edge::NorthUp,
+];
+
+impl Edge {
+    /// Returns edge associated with this side.
+    /// Returns U8Vec2::MAX for count/unknown
+    pub fn get_edge(&self) -> U8Vec2 {
+        if *self == Self::Count || *self == Self::Unknown {
+            U8Vec2::MAX
+        } else {
+            EDGES[usize::from(*self)]
+        }
+    }
+
+    pub fn all_edges() -> Iter<'static, Edge> {
+        VALID_EDGES.iter()
+    }
+}
+
+/// The eight corners of a cube, indexed into `CORNER_OFFSETS` and
+/// `CORNER_NORMALS`, following the module's corner-numbering convention.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Corner {
@@ -136,6 +164,8 @@ pub enum Corner {
     Unknown,
 }
 
+/// The 26 face/edge/corner-adjacent voxels of a 3x3x3 Moore neighborhood
+/// (center excluded), indexed into `MOORE_NEIGHBORHOOD_3D`.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Neighbor {
@@ -172,6 +202,8 @@ pub enum Neighbor {
     Unknown,
 }
 
+/// A neighbor voxel in a Moore neighborhood: its integer `n_offset` from the
+/// origin and its Euclidean `n_distance` to that offset.
 #[derive(Default, Debug, Copy, Clone, PartialEq)]
 pub struct MooreNeighbor {
     pub n_offset: Coord,
@@ -352,6 +384,8 @@ lazy_static! {
         normals.try_into().unwrap()
     };
 
+    /// The 26 voxels of a 3x3x3 Moore neighborhood around the origin (center
+    /// excluded), each with its `Coord` offset and Euclidean distance.
     pub static ref MOORE_NEIGHBORHOOD_3D: [MooreNeighbor; Neighbor::Count as usize] = {
         let mut neighbors = Vec::<MooreNeighbor>::with_capacity(Neighbor::Count as usize);
 
@@ -381,6 +415,8 @@ lazy_static! {
     };
 
 
+    /// The non-center voxels of a 5x5x5 block (offsets -2..=2), each with its
+    /// `Coord` offset and Euclidean distance.
     pub static ref MOORE_NEIGHBORHOOD_3D_SHELL_2: Box<[MooreNeighbor]> = {
         let mut neighbors = Vec::<MooreNeighbor>::new();
 
@@ -404,6 +440,7 @@ lazy_static! {
     };
 }
 
+/// The unit face normal for each `Side`.
 pub const SIDE_NORMALS: [Coord; Side::Count as usize] = [
     Coord::new(-1, 0, 0), // LEFT
     Coord::new(1, 0, 0),  // RIGHT
@@ -415,6 +452,8 @@ pub const SIDE_NORMALS: [Coord; Side::Count as usize] = [
     Coord::new(0, 0, 1),  // FRONT
 ];
 
+/// A tangent-frame 4-vector per `Side`: the first three components give the
+/// tangent direction for that face; the fourth is a constant `1.0`.
 pub const SIDE_TANGENTS: [[f32; 4]; Side::Count as usize] = [
     // Left  (-1,0,0): tangent along +z
     [0.0, 0.0, 1.0, 1.0],
@@ -430,6 +469,7 @@ pub const SIDE_TANGENTS: [[f32; 4]; Side::Count as usize] = [
     [-1.0, 0.0, 0.0, 1.0],
 ];
 
+/// The four corner-vertex indices of each face, in `Side` order.
 pub const SIDE_CORNERS: [[usize; 4]; Side::Count as usize] = [
     [2, 0, 6, 4], // WEST
     [1, 3, 5, 7], // EAST
@@ -439,6 +479,7 @@ pub const SIDE_CORNERS: [[usize; 4]; Side::Count as usize] = [
     [0, 1, 4, 5], // SOUTH
 ];
 
+/// The four edge indices bounding each face, in `Side` order.
 pub const SIDE_EDGES: [[usize; 4]; Side::Count as usize] = [
     [1, 2, 6, 9],   // WEST
     [3, 4, 7, 10],  // EAST
@@ -448,8 +489,12 @@ pub const SIDE_EDGES: [[usize; 4]; Side::Count as usize] = [
     [0, 2, 4, 8],   // SOUTH
 ];
 
+/// The distance to a face-adjacent neighbor for each `Side` (`1.0` on a unit
+/// voxel grid).
 pub const SIDE_NEIGHBORING_DISTANCES: [f32; 6] = [1.0; 6];
 
+/// Return the `Side` whose face normal matches the unit-clamped direction `d`,
+/// or `None` if `d` is not one of the six axis directions.
 pub fn dir_to_side(d: Coord) -> Option<Side> {
     let d = d.unit_clamp();
     for i in 0..Side::Count as usize {

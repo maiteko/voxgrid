@@ -1,8 +1,10 @@
 //! 3D integer coordinates.
 //!
-//! [`Coord`] is a newtype over a `glam` integer vector (`IndexVec`) that provides
-//! the arithmetic, comparison, and conversion operations needed to address voxel
-//! grids. It derefs to the underlying vector, so `glam` component access (`.x`,
+//! [`Coord`] is a sparse voxel tree coordinate initially based on OpenVDB Coord.
+//! It is defined as a newtype over a `glam` integer vector (`IndexVec`) that provides
+//! the core vector functionality. It also defines several functions specific to indexing a voxel
+//! grid, and managing CoordBBox (such as component_gt/ge/lt/le).
+//! It derefs to the underlying vector, so `glam` component access (`.x`,
 //! `.y`, `.z`) and vector math are available directly.
 //!
 //! The module also defines the [`CoordRound`] rounding trait and, via macros, a
@@ -59,55 +61,67 @@ impl Deref for Coord {
 }
 /// Methods for offsetting, clamping, and comparing `Coord` values.
 impl Coord {
+    /// The smallest representable coordinate: every component at the index type's minimum.
     pub const MIN: Self = Self(IndexVec {
         x: Index::MIN,
         y: Index::MIN,
         z: Index::MIN,
     });
+    /// The largest representable coordinate: every component at the index type's maximum.
     pub const MAX: Self = Self(IndexVec {
         x: Index::MAX,
         y: Index::MAX,
         z: Index::MAX,
     });
+    /// The grid origin, `(0, 0, 0)`.
     pub const ORIGIN: Self = Self(IndexVec { x: 0, y: 0, z: 0 });
 
+    /// Construct a [`Coord`] from its three index components.
     pub const fn new(x: Index, y: Index, z: Index) -> Self {
         Self(IndexVec { x, y, z })
     }
 
     #[cfg(feature = "bytemuck")]
+    /// Returns a raw byte slice over the coordinate's fields. Requires the `bytemuck` feature.
     pub fn bytes_of(&self) -> &[u8] {
         bytemuck::bytes_of(self)
     }
 
     #[cfg(feature = "bytemuck")]
+    /// Returns a mutable raw byte slice over the coordinate's fields. Requires the `bytemuck` feature.
     pub fn bytes_of_mut(&mut self) -> &mut [u8] {
         bytemuck::bytes_of_mut(self)
     }
 
     #[cfg(feature = "bytemuck")]
+    /// Views the coordinate's fields as a slice of index values. Requires the `bytemuck` feature.
     pub fn as_slice(&self) -> &[Index] {
         bytemuck::cast_slice(self.bytes_of())
     }
 
     #[cfg(feature = "bytemuck")]
+    /// Views the coordinate's fields as a mutable slice of index values. Requires the `bytemuck` feature.
     pub fn as_slice_mut(&mut self) -> &mut [Index] {
         bytemuck::cast_slice_mut(self.bytes_of_mut())
     }
 
     #[cfg(feature = "bytemuck")]
+    /// Reinterprets the components as the unsigned index type, as used for hashing and indexing. Requires the `bytemuck` feature.
     pub fn as_slice_unsigned(&self) -> &[UIndex] {
         bytemuck::cast_slice(self.as_slice())
     }
 
+    /// Returns the components as a three-element index array.
     pub fn as_array(&self) -> [Index; 3] {
         [self.x, self.y, self.z]
     }
 
+    /// Returns the components as a three-element unsigned-index array.
     pub fn as_array_unsigned(&self) -> [UIndex; 3] {
         [self.x as UIndex, self.y as UIndex, self.z as UIndex]
     }
 
+    /// Offsets this coordinate in place by the per-axis deltas `(dx, dy, dz)`, returning `&mut self` for chaining.
     pub const fn offset(&mut self, dx: Index, dy: Index, dz: Index) -> &mut Self {
         self.0.x += dx;
         self.0.y += dy;
@@ -116,18 +130,22 @@ impl Coord {
         self
     }
 
+    /// Offsets this coordinate in place by `n` on every axis, returning `&mut self` for chaining.
     pub const fn single_offset(&mut self, n: Index) -> &mut Self {
         self.offset(n, n, n)
     }
 
+    /// Returns a new [`Coord`] offset by the per-axis deltas `(dx, dy, dz)`.
     pub const fn offset_by(&self, dx: Index, dy: Index, dz: Index) -> Self {
         Self::new(self.0.x + dx, self.0.y + dy, self.0.z + dz)
     }
 
+    /// Returns a new [`Coord`] offset by `n` on every axis.
     pub const fn single_offset_by(&self, n: Index) -> Self {
         self.offset_by(n, n, n)
     }
 
+    /// Returns a new [`Coord`] with the per-component minimum of this and `other`.
     pub fn min_component(&self, other: &Self) -> Coord {
         Self::new(
             self.x.min(other.x),
@@ -136,6 +154,7 @@ impl Coord {
         )
     }
 
+    /// Returns a new [`Coord`] with the per-component maximum of this and `other`.
     pub fn max_component(&self, other: &Self) -> Coord {
         Self::new(
             self.x.max(other.x),
@@ -144,22 +163,27 @@ impl Coord {
         )
     }
 
+    /// Returns `true` if any component is less than the corresponding component of `other`.
     pub fn component_lt(&self, other: &Self) -> bool {
         self.x < other.x || self.y < other.y || self.z < other.z
     }
 
+    /// Returns `true` if any component is less than or equal to the corresponding component of `other`.
     pub fn component_le(&self, other: &Self) -> bool {
         self.x <= other.x || self.y <= other.y || self.z <= other.z
     }
 
+    /// Returns `true` if any component is greater than the corresponding component of `other`.
     pub fn component_gt(&self, other: &Self) -> bool {
         self.x > other.x || self.y > other.y || self.z > other.z
     }
 
+    /// Returns `true` if any component is greater than or equal to the corresponding component of `other`.
     pub fn component_ge(&self, other: &Self) -> bool {
         self.x >= other.x || self.y >= other.y || self.z >= other.z
     }
 
+    /// Returns the axis index of the smallest component: `0` for `x`, `1` for `y`, `2` for `z`.
     pub fn min_idx(&self) -> usize {
         let mut idx = 0;
 
@@ -177,6 +201,7 @@ impl Coord {
         idx
     }
 
+    /// Returns the axis index of the largest component: `0` for `x`, `1` for `y`, `2` for `z`.
     pub fn max_idx(&self) -> usize {
         let mut idx = 0;
 
@@ -195,6 +220,7 @@ impl Coord {
     }
 
     #[inline]
+    /// Returns a coordinate with each component made non-negative.
     pub fn abs(&self) -> Self {
         Self::new(self.x.abs(), self.y.abs(), self.z.abs())
     }
@@ -205,14 +231,17 @@ impl Coord {
         (self.x + self.y + self.z) as usize
     }
 
+    /// Returns a coordinate with the `x` and `z` components swapped (a `glam` `zyx` swizzle).
     pub fn zyx(&self) -> Coord {
         Self(self.0.zyx())
     }
 
+    /// Returns `true` if this and `other` agree on at least one axis.
     pub fn any_match(&self, other: &Coord) -> bool {
         self.x == other.x || self.y == other.y || self.z == other.z
     }
 
+    /// Returns a coordinate that is `1` on each axis where this and `other` agree and `0` otherwise.
     pub fn match_axes(&self, other: &Coord) -> Coord {
         Self::new(
             (self.x == other.x) as Index,
@@ -221,6 +250,7 @@ impl Coord {
         )
     }
 
+    /// Returns a coordinate with each component clamped to the range `[-1, 1]`.
     pub fn unit_clamp(&self) -> Coord {
         Self::new(
             self.x.clamp(-1, 1),
@@ -296,13 +326,20 @@ impl std::ops::Neg for Coord {
     }
 }
 
+/// Rounds `value` to the nearest integer, with ties rounding up.
+///
+/// Works for any `Real` + `NumCast` type.
 pub fn round_half_up<T: Real + NumCast>(value: T) -> T {
     (value + <T as NumCast>::from(0.5).unwrap()).floor()
 }
 
+/// Per-component rounding and truncation for floating-point `glam` vectors.
 pub trait CoordRound {
+    /// Rounds each component to the nearest integer, with ties rounding up.
     fn round_half_up(&self) -> Self;
+    /// Rounds each component up to the nearest integer.
     fn ceil(&self) -> Self;
+    /// Rounds each component down to the nearest integer.
     fn floor(&self) -> Self;
 }
 
