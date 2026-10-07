@@ -68,7 +68,7 @@ assert_eq!(bbox, CoordBBox::new(Coord::ORIGIN, b));
 
 const TREE_DIM: TreeDim<8> = TreeDim::octree();
 // Roots voxel length is the entire index space, positive and negative
-assert_eq!(TREE_DIM.root().voxel_length, UIndex::MAX);
+assert_eq!(TREE_DIM.root().voxel_length, UIndex::MAX as usize);
 // octree sets all child nodes up to 1, with tree_depth == MAX_DEPTH
 // This means the first child is a octree with axis voxel length of 2^7
 assert_eq!(TREE_DIM.child(TREE_DIM.root()).voxel_length, 128);

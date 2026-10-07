@@ -26,6 +26,32 @@
 //! - `index64` — use `i64`/`u64` coordinates instead of `i32`/`u32`.
 //! - `serde` — derive `Serialize`/`Deserialize` for the public types.
 //! - `bytemuck` — derive `Pod`/`Zeroable` and enable byte-slice conversions.
+//!
+//! ```rust
+//! use voxgrid::*;
+//!
+//! let a = Coord::new(1, 2, 3);
+//! let b = Coord::new(4, 5, 6);
+//!
+//! assert_eq!(a + b, Coord::new(5, 7, 9));
+//! assert_eq!(b - a, Coord::new(3, 3, 3));
+//! assert_eq!(-a, Coord::new(-1, -2, -3));
+//!
+//! let mut bbox = CoordBBox::new(a, b);
+//!
+//! bbox.enclose_point(&Coord::ORIGIN);
+//! assert_eq!(bbox, CoordBBox::new(Coord::ORIGIN, b));
+//!
+//!
+//! const TREE_DIM: TreeDim<8> = TreeDim::octree();
+//! // Roots voxel length is the entire index space, positive and negative
+//! assert_eq!(TREE_DIM.root().voxel_length, UIndex::MAX as usize);
+//! // octree sets all child nodes up to 1, with tree_depth == MAX_DEPTH
+//! // This means the first child is a octree with axis voxel length of 2^7
+//! assert_eq!(TREE_DIM.child(TREE_DIM.root()).voxel_length, 128);
+//!
+//! assert_eq!(TREE_DIM.root().child_length, (UIndex::MAX / 128) as usize)
+//! ```
 
 mod coord;
 mod coord_bbox;

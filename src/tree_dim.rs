@@ -141,6 +141,15 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
+    pub const fn first_child(&self) -> &NodeDim {
+        &self.node_dims[1]
+    }
+
+    pub const fn at_index(&self, idx: usize) -> &NodeDim {
+        &self.node_dims[idx]
+    }
+
+    #[inline]
     /// The level below `node`; panics if `node` is the leaf (`node_level <= 1`).
     pub const fn child(&self, node: &NodeDim) -> &NodeDim {
         assert!(node.node_level > 1 && node.node_level <= self.tree_depth as u8);
@@ -301,8 +310,17 @@ impl NodeDim {
     /// ```
     pub const fn new(log_dim: u8, sum_child_dims: u8, node_level: u8, is_sparse: bool) -> Self {
         let total_dim = log_dim + sum_child_dims;
-        let child_length = 1_usize << log_dim as usize;
-        let voxel_length = 1_usize << total_dim as usize;
+
+        let (child_length, voxel_length) = if is_sparse {
+            let voxel_length = UIndex::MAX as usize;
+            let child_length = voxel_length / (1_usize << sum_child_dims);
+            (child_length, voxel_length)
+        } else {
+            let child_length = 1_usize << log_dim as usize;
+            let voxel_length = 1_usize << total_dim as usize;
+            (child_length, voxel_length)
+        };
+
         let coord_dim_mask = child_length - 1;
 
         Self {
