@@ -1,7 +1,15 @@
 # VoxGrid
 
-Coordinate and bounding-box math for **voxel grids** and **log-scaled voxel trees**, based initialy on
-the indexing/coordinate logic found in OpenVDB.
+VoxGrid is targetted at general purpose utilities used in sparse voxel data structures. It is not, itself, a voxel data structure.
+
+Instead it provides common types, traits, and tables that are needed when building voxel worlds, including:
+
+- Coordinate and bounding-box math for **voxel grids** and **log-scaled voxel trees**, based largely on
+  the system used by OpenVDB
+- _planned_: 
+  - Quantized types for consistent hashable float storage
+  - SDF interactions, integration with sdfu
+  - integrations with various other libraries
 
 ## Coord
 

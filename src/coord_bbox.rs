@@ -482,8 +482,8 @@ impl std::ops::Shr<u64> for CoordBBox {
 /// Right-shift both corners in place by `rhs`.
 impl std::ops::ShrAssign<u64> for CoordBBox {
     fn shr_assign(&mut self, rhs: u64) {
-        *self.min >>= rhs;
-        *self.max >>= rhs;
+        *self.min = *self.min >> rhs;
+        *self.max = *self.max >> rhs;
     }
 }
 
@@ -502,8 +502,8 @@ impl std::ops::Shl<u64> for CoordBBox {
 /// Left-shift both corners in place by `rhs`.
 impl std::ops::ShlAssign<u64> for CoordBBox {
     fn shl_assign(&mut self, rhs: u64) {
-        *self.min <<= rhs;
-        *self.max <<= rhs;
+        *self.min = *self.min << rhs;
+        *self.max = *self.max << rhs;
     }
 }
 
@@ -522,8 +522,8 @@ impl std::ops::BitAnd<Index> for CoordBBox {
 /// Bitwise-and both corners in place with `rhs`.
 impl std::ops::BitAndAssign<Index> for CoordBBox {
     fn bitand_assign(&mut self, rhs: Index) {
-        *self.min &= rhs;
-        *self.max &= rhs;
+        self.min &= rhs;
+        self.max &= rhs;
     }
 }
 
@@ -542,8 +542,8 @@ impl std::ops::BitOr<Index> for CoordBBox {
 /// Bitwise-or both corners in place with `rhs`.
 impl std::ops::BitOrAssign<Index> for CoordBBox {
     fn bitor_assign(&mut self, rhs: Index) {
-        *self.min |= rhs;
-        *self.max |= rhs;
+        self.min |= rhs;
+        self.max |= rhs;
     }
 }
 

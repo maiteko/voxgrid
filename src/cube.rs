@@ -55,12 +55,93 @@ pub enum Side {
     Unknown,
 }
 
+const VALID_SIDES: [Side; 6] = [
+    Side::Left,
+    Side::Right,
+    Side::Bottom,
+    Side::Top,
+    Side::Back,
+    Side::Front,
+];
+
+impl Side {
+    /// Returns the face normal for this side (`Coord::MAX` for count/unknown).
+    pub fn get_normal(&self) -> Coord {
+        if *self == Self::Count || *self == Self::Unknown {
+            Coord::MAX
+        } else {
+            SIDE_NORMALS[usize::from(*self)]
+        }
+    }
+
+    /// Returns the tangent-frame 4-vector for this side (`[f32::MAX; 4]` for
+    /// count/unknown).
+    pub fn get_tangent(&self) -> [f32; 4] {
+        if *self == Self::Count || *self == Self::Unknown {
+            [f32::MAX; 4]
+        } else {
+            SIDE_TANGENTS[usize::from(*self)]
+        }
+    }
+
+    /// Returns the four corner-vertex indices bounding this side
+    /// (`[usize::MAX; 4]` for count/unknown).
+    pub fn get_corners(&self) -> [usize; 4] {
+        if *self == Self::Count || *self == Self::Unknown {
+            [usize::MAX; 4]
+        } else {
+            SIDE_CORNERS[usize::from(*self)]
+        }
+    }
+
+    /// Returns the four edge indices bounding this side (`[usize::MAX; 4]` for
+    /// count/unknown).
+    pub fn get_edges(&self) -> [usize; 4] {
+        if *self == Self::Count || *self == Self::Unknown {
+            [usize::MAX; 4]
+        } else {
+            SIDE_EDGES[usize::from(*self)]
+        }
+    }
+
+    /// Returns the distance to a face-adjacent neighbor for this side
+    /// (`f32::MAX` for count/unknown).
+    pub fn get_neighboring_distance(&self) -> f32 {
+        if *self == Self::Count || *self == Self::Unknown {
+            f32::MAX
+        } else {
+            SIDE_NEIGHBORING_DISTANCES[usize::from(*self)]
+        }
+    }
+
+    pub fn all_sides() -> Iter<'static, Side> {
+        VALID_SIDES.iter()
+    }
+
+    /// Return the `Side` whose face normal matches the unit-clamped direction `d`,
+    /// or `None` if `d` is not one of the six axis directions.
+    pub fn from_face_direction(d: Coord) -> Option<Side> {
+        let d = d.unit_clamp();
+        if d.sum() != 1 {
+            return None;
+        }
+
+        for side in Self::all_sides() {
+            if side.get_normal() == d {
+                return Some(*side);
+            }
+        }
+
+        panic!("face direction {} did not match any sides", d);
+    }
+}
+
 /// Face directions named by axis sign (Minecraft-style), interchangeable with
 /// `Side` via `From`. Uses West/East/Down/Up/North/South naming to make
 /// `SIDE_NORMALS` reasoning clearer.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
-pub enum SideAxis {
+pub enum CardinalSide {
     /// Negative X
     West = 0,
     /// Positive X
@@ -79,15 +160,30 @@ pub enum SideAxis {
     Unknown,
 }
 
-impl From<Side> for SideAxis {
+const VALID_CARDINAL_SIDES: [CardinalSide; 6] = [
+    CardinalSide::West,
+    CardinalSide::East,
+    CardinalSide::Down,
+    CardinalSide::Up,
+    CardinalSide::North,
+    CardinalSide::South,
+];
+
+impl CardinalSide {
+    pub fn all_cardinal_sides() -> Iter<'static, CardinalSide> {
+        VALID_CARDINAL_SIDES.iter()
+    }
+}
+
+impl From<Side> for CardinalSide {
     fn from(value: Side) -> Self {
         let value: usize = value.into();
         value.into()
     }
 }
 
-impl From<SideAxis> for Side {
-    fn from(value: SideAxis) -> Self {
+impl From<CardinalSide> for Side {
+    fn from(value: CardinalSide) -> Self {
         let value: usize = value.into();
         value.into()
     }
@@ -140,6 +236,16 @@ impl Edge {
         }
     }
 
+    /// Returns the outward-facing normal for this edge (`Vec3::MAX` for
+    /// count/unknown).
+    pub fn get_normal(&self) -> Vec3 {
+        if *self == Self::Count || *self == Self::Unknown {
+            Vec3::MAX
+        } else {
+            EDGE_NORMALS[usize::from(*self)]
+        }
+    }
+
     pub fn all_edges() -> Iter<'static, Edge> {
         VALID_EDGES.iter()
     }
@@ -162,6 +268,42 @@ pub enum Corner {
     Count,
     #[default]
     Unknown,
+}
+
+const VALID_CORNERS: [Corner; 8] = [
+    Corner::SouthWestDown,
+    Corner::SouthEastDown,
+    Corner::SouthEastup,
+    Corner::SouthWestup,
+    Corner::NorthWestDown,
+    Corner::NorthEastDown,
+    Corner::NorthWestUp,
+    Corner::NorthEastUp,
+];
+
+impl Corner {
+    /// Returns the corner's local-space offset (`Vec3::MAX` for count/unknown).
+    pub fn get_offset(&self) -> Vec3 {
+        if *self == Self::Count || *self == Self::Unknown {
+            Vec3::MAX
+        } else {
+            CORNER_OFFSETS[usize::from(*self)]
+        }
+    }
+
+    /// Returns the outward-facing normal for this corner (`Vec3::MAX` for
+    /// count/unknown).
+    pub fn get_normal(&self) -> Vec3 {
+        if *self == Self::Count || *self == Self::Unknown {
+            Vec3::MAX
+        } else {
+            CORNER_NORMALS[usize::from(*self)]
+        }
+    }
+
+    pub fn all_corners() -> Iter<'static, Corner> {
+        VALID_CORNERS.iter()
+    }
 }
 
 /// The 26 face/edge/corner-adjacent voxels of a 3x3x3 Moore neighborhood
@@ -200,6 +342,51 @@ pub enum Neighbor {
     Count,
     #[default]
     Unknown,
+}
+
+const VALID_NEIGHBORS: [Neighbor; 26] = [
+    Neighbor::SouthWestDown,
+    Neighbor::SouthDown,
+    Neighbor::SouthEastDown,
+    Neighbor::SouthWest,
+    Neighbor::South,
+    Neighbor::SouthEast,
+    Neighbor::SouthWestUp,
+    Neighbor::SouthUp,
+    Neighbor::SouthEastUp,
+    Neighbor::WestDown,
+    Neighbor::Down,
+    Neighbor::EastDown,
+    Neighbor::West,
+    Neighbor::East,
+    Neighbor::WestUp,
+    Neighbor::Up,
+    Neighbor::EastUp,
+    Neighbor::NorthWestDown,
+    Neighbor::NorthDown,
+    Neighbor::NorthEastDown,
+    Neighbor::NorthWest,
+    Neighbor::North,
+    Neighbor::NorthEast,
+    Neighbor::NorthWestUp,
+    Neighbor::NorthUp,
+    Neighbor::NorthEastUp,
+];
+
+impl Neighbor {
+    /// Returns the Moore-neighborhood entry for this neighbor
+    /// (`MooreNeighbor::default()` for count/unknown).
+    pub fn get_neighbor(&self) -> MooreNeighbor {
+        if *self == Self::Count || *self == Self::Unknown {
+            MooreNeighbor::default()
+        } else {
+            MOORE_NEIGHBORHOOD_3D[usize::from(*self)]
+        }
+    }
+
+    pub fn all_neighbors() -> Iter<'static, Neighbor> {
+        VALID_NEIGHBORS.iter()
+    }
 }
 
 /// A neighbor voxel in a Moore neighborhood: its integer `n_offset` from the
@@ -461,8 +648,8 @@ pub const SIDE_TANGENTS: [[f32; 4]; Side::Count as usize] = [
     [0.0, 0.0, -1.0, 1.0],
     // Bottom (0,-1,0): tangent along +x
     [1.0, 0.0, 0.0, 1.0],
-    // Top (0,+1,0): tangent along +x
-    [1.0, 0.0, 0.0, 1.0],
+    // Top (0,+1,0): tangent along -x
+    [-1.0, 0.0, 0.0, 1.0],
     // Back (0,0,-1): tangent along +x
     [1.0, 0.0, 0.0, 1.0],
     // Front(0,0,+1): tangent along -x
@@ -492,16 +679,3 @@ pub const SIDE_EDGES: [[usize; 4]; Side::Count as usize] = [
 /// The distance to a face-adjacent neighbor for each `Side` (`1.0` on a unit
 /// voxel grid).
 pub const SIDE_NEIGHBORING_DISTANCES: [f32; 6] = [1.0; 6];
-
-/// Return the `Side` whose face normal matches the unit-clamped direction `d`,
-/// or `None` if `d` is not one of the six axis directions.
-pub fn dir_to_side(d: Coord) -> Option<Side> {
-    let d = d.unit_clamp();
-    for i in 0..Side::Count as usize {
-        if SIDE_NORMALS[i] == d {
-            return Some(i.into());
-        }
-    }
-
-    None
-}

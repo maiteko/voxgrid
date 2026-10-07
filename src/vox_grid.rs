@@ -1,3 +1,6 @@
+#![cfg(feature = "sdf-grid")]
+pub mod sdf;
+
 use super::*;
 
 /// Defines operations on a voxel grid which may or may not be sparse
