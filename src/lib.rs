@@ -31,10 +31,12 @@ mod coord;
 mod coord_bbox;
 pub mod cube;
 mod tree_dim;
+mod vox_grid;
 
 pub use coord::*;
 pub use coord_bbox::*;
 pub use tree_dim::*;
+pub use vox_grid::*;
 
 #[cfg(feature = "index64")]
 mod config_index {

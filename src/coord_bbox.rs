@@ -43,17 +43,19 @@ impl Default for CoordBBox {
 }
 
 impl CoordBBox {
+    pub const SPARSE: Self = CoordBBox::new(Coord::MIN, Coord::MAX);
+
     /// Construct a box from its inclusive `min` and `max` corners, stored as given
     /// without reordering.
 
-    pub fn new(min: Coord, max: Coord) -> Self {
+    pub const fn new(min: Coord, max: Coord) -> Self {
         Self { min, max }
     }
 
     /// Create an axis-aligned cube of side length `dim` with its minimum corner at
     /// `min`.
 
-    pub fn create_cube(min: &Coord, dim: u64) -> Self {
+    pub const fn create_cube(min: &Coord, dim: u64) -> Self {
         Self {
             min: *min,
             max: min.single_offset_by((dim - 1) as Index),
@@ -69,7 +71,7 @@ impl CoordBBox {
     /// Reset to the empty box (`min == Coord::MAX`, `max == Coord::MIN`), the same
     /// state as [`Default`].
 
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         self.min = Coord::MAX;
         self.max = Coord::MIN;
     }
