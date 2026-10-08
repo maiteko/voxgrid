@@ -15,6 +15,8 @@ Instead, it provides common types, traits, and tables that are needed when build
 
 `Coord` is based on the OpenVDB types of the same name, implementing a lot of the same core functionality, and providing some new functionality. `Coord` is defined as a thin wrapper around glam IVec3, and provides several conversion/arithmetic implementations specific to a voxel tree/bbox. It also implements conversions between various glam vec types and array/tuple triplets.
 
+There is an `index64` feature which enables `i64`/`u64` with the intent of representing float types with `f128`, however, there is no `f128` glam type, so it currently uses `f64`. This means that float indexes cannot represent the entire integer coordinate range.
+
 ## CoordBBox
 
 It is also based on the OpenVDB type of the same name, providing a two-point, axis-aligned bounding box. It provides tools for expanding, enclosing, checking overlaps, and converting between global and bbox local coordinates.
@@ -51,8 +53,8 @@ game engines/voxel libraries. i64 indexes (i64, I64Vec3, U64Vec3, DVec3) can be 
 
 | Feature   | Default | Effect |
 |-----------|:-------:|--------|
-| *(none)*  |   ✓     | `i32`/`u32` coordinates. |
-| `index64` |         | Use `i64`/`u64` (and `f64`/`DVec3`) coordinates instead. |
+| *(none)*  |   ✓     | `i32`/`u32`/`f64` coordinates. |
+| `index64` |         | Use `i64`/`u64`/`f64` coordinates instead. |
 | `serde`   |         | Derive `Serialize`/`Deserialize` on the public types (and enable `glam/serde` and `half/serde`). |
 | `bytemuck`|         | Derive `Pod`/`Zeroable` and enable byte-slice conversions (and enable `glam/bytemuck`). |
 

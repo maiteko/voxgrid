@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::Result;
 
 /// Defines operations on a voxel grid which may or may not be sparse
 ///
@@ -57,38 +58,40 @@ pub trait VoxGrid<T> {
     }
 
     /// Returns the voxel at bbox local coordinates
-    fn get_bbox_voxel(&self, bbox: &CoordBBox, pos: &Coord) -> Option<T> {
-        self.get_voxel(&bbox.local_to_global(pos))
+    fn get_bbox_voxel(&self, bbox: &CoordBBox, pos: &LocalCoord) -> Result<Option<T>> {
+        Ok(self.get_voxel(&bbox.local_to_global(pos)?))
     }
 
     /// Returns the voxel ref at bbox local coordinates
-    fn get_bbox_voxel_ref(&self, bbox: &CoordBBox, pos: &Coord) -> Option<&T> {
-        self.get_voxel_ref(&bbox.local_to_global(pos))
+    fn get_bbox_voxel_ref(&self, bbox: &CoordBBox, pos: &LocalCoord) -> Result<Option<&T>> {
+        Ok(self.get_voxel_ref(&bbox.local_to_global(pos)?))
     }
 
     /// Returns the voxel ref at bbox local coordinates
-    fn get_bbox_voxel_mut(&self, bbox: &CoordBBox, pos: &Coord) -> Option<&mut T> {
-        self.get_voxel_mut(&bbox.local_to_global(pos))
+    fn get_bbox_voxel_mut(&self, bbox: &CoordBBox, pos: &LocalCoord) -> Result<Option<&mut T>> {
+        Ok(self.get_voxel_mut(&bbox.local_to_global(pos)?))
     }
 
     /// Returns value at bbox local coordinates
-    fn get_bbox_value(&self, bbox: &CoordBBox, pos: &Coord) -> T
+    fn get_bbox_value(&self, bbox: &CoordBBox, pos: &LocalCoord) -> Result<T>
     where
         T: Default,
     {
-        self.get_value(&bbox.local_to_global(pos))
+        Ok(self.get_value(&bbox.local_to_global(pos)?))
     }
 
     /// Set voxel at bbox local coordinates
-    fn set_bbox_voxel(&mut self, bbox: &CoordBBox, pos: &Coord, v: Option<T>) {
-        self.set_voxel(&bbox.local_to_global(pos), v);
+    fn set_bbox_voxel(&mut self, bbox: &CoordBBox, pos: &LocalCoord, v: Option<T>) -> Result<()> {
+        self.set_voxel(&bbox.local_to_global(pos)?, v);
+        Ok(())
     }
 
     /// Set value at bbox local coordinates
-    fn set_bbox_value(&mut self, bbox: &CoordBBox, pos: &Coord, v: T)
+    fn set_bbox_value(&mut self, bbox: &CoordBBox, pos: &LocalCoord, v: T) -> Result<()>
     where
         T: PartialEq,
     {
-        self.set_value(&bbox.local_to_global(pos), v);
+        self.set_value(&bbox.local_to_global(pos)?, v);
+        Ok(())
     }
 }

@@ -309,15 +309,28 @@ impl CoordBBox {
     }
 
     /// Offset `pos` by `min` to convert a local coordinate to a global one.
+    /// returns None if the pos is outside of the bbox range
     #[inline]
-    pub fn local_to_global(&self, pos: &Coord) -> Coord {
-        self.min + *pos
+    pub fn local_to_global(&self, pos: &LocalCoord) -> Result<Coord> {
+        let range: LocalCoord = (UIndexVec::from(self.max) - UIndexVec::from(self.min)).into();
+
+        if pos.component_gt(&range) {
+            return Err(anyhow!("Outside BBox range. BBox: {}, Pos: {}", self, pos));
+        }
+
+        Some((UIndexVec::from(self.min) + *pos).into())
     }
 
     /// Subtract `min` from `pos` to convert a global coordinate to a local one.
+    /// returns None if the pos is outside of the bbox range
     #[inline]
-    pub fn global_to_local(&self, pos: &Coord) -> Coord {
-        *pos - self.min
+    pub fn global_to_local(&self, pos: &Coord) -> Result<LocalCoord> {
+        if pos.component_lt(&self.min) || pos.component_gt(&self.max) {
+            // pos is not within this bbox
+            return Err(anyhow!("Outside BBox range. BBox: {}, Pos: {}", self, pos));
+        }
+
+        Ok((UIndexVec::from(*pos) - UIndexVec::from(self.min)).into())
     }
 
     /// Return whether `pos` lies on any boundary of the box.
@@ -464,6 +477,12 @@ impl CoordBBox {
             .collect::<HashSet<Coord>>()
             .into_iter()
             .collect()
+    }
+}
+
+impl std::fmt::Display for CoordBBox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}..{}]", self.min, self.max)
     }
 }
 

@@ -86,7 +86,7 @@ mod config_index {
     pub type UIndex = u32;
     pub type IndexVec = IVec3;
     pub type UIndexVec = UVec3;
-    pub type FIndex = f32;
+    pub type FIndex = f64;
     pub type FIndexVec = Vec3;
 }
 

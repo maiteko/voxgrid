@@ -348,7 +348,7 @@ impl NodeDim {
 
     /// The child-level local coordinate of `pos`: shifted right by `sum_child_dims`
     /// and masked by `coord_dim_mask`.
-    pub fn global_to_local_child(&self, pos: &Coord) -> Coord {
+    pub fn global_to_local_child(&self, pos: &Coord) -> LocalCoord {
         let pos = UIndexVec::from(pos);
         let shifted = pos >> self.sum_child_dims;
         let mask = self.coord_dim_mask as UIndex;
@@ -357,7 +357,7 @@ impl NodeDim {
     }
 
     /// The voxel-level local coordinate of `pos`, masked to `voxel_length - 1`.
-    pub fn global_to_local_voxel(&self, pos: &Coord) -> Coord {
+    pub fn global_to_local_voxel(&self, pos: &Coord) -> LocalCoord {
         let pos = UIndexVec::from(pos);
         let mask = (self.voxel_length - 1) as UIndex;
 

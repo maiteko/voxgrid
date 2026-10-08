@@ -13,8 +13,34 @@
 //!
 //! Coord is opinionated when it comes to conversions to properly align to the grid:
 //!
-//! - float conversions use `round_half_up`,
-//! - integer casts are non-saturating
+//! Float conversions/operators convert to f64, then uses round_half_up
+//! on the result. Rounding away from zero (standard rust round) can cause inconsistent indexing
+//! around origin:
+//!
+//! .round():
+//!
+//! ```text
+//! coord a: (-0.5, -0.5, -0.5) -> (-1.0, -1.0, -1.0)
+//! coord b: (0.5, 0.5, 0.5) -> (1.0, 1.0, 1.0)
+//! distance: 2.0
+//!
+//! coord a: (0.5, 0.5, 0.5) -> (1.0, 1.0, 1.0)
+//! coord b: (1.5, 1.5, 1.5) -> (2.0, 2.0, 2.0)
+//! distance: 1.0
+//! ```
+//!
+//! round_half_up:
+//!
+//! ```text
+//! coord a: (-0.5, -0.5, -0.5) -> (0, 0, 0)
+//! coord b: (0.5, 0.5, 0.5) -> (1.0, 1.0, 1.0)
+//! distance: 1.0
+//!
+//! coord a: (0.5, 0.5, 0.5) -> (1.0, 1.0, 1.0)
+//! coord b: (1.5, 1.5, 1.5) -> (2.0, 2.0, 2.0)
+//! distance: 1.0
+//! ```
+//! signed/unsigned integer conversion (`Coord` to `LocalCoord`) occurs through TreeDim or CoordBBox
 
 use glam::Vec3Swizzles;
 use num::{Integer, NumCast};
@@ -31,7 +57,7 @@ use bytemuck::{Pod, Zeroable};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-pub use super::*;
+pub use crate::*;
 
 /// A 3D integer coordinate for addressing a voxel grid.
 ///
@@ -98,7 +124,7 @@ impl Coord {
     }
 
     pub fn from_float<T: Real + NumCast>(v: T) -> Self {
-        let v = round_half_up(v);
+        let v = v.to_i64();
         #[cfg(feature = "index64")]
         let v = v.to_i64().unwrap();
 
@@ -387,510 +413,30 @@ impl std::ops::Neg for Coord {
     }
 }
 
-/// Rounds `value` to the nearest integer, with ties rounding up to the nearest integer.
-pub fn round_half_up<T: Real + NumCast>(value: T) -> T {
-    (value + <T as NumCast>::from(0.5).unwrap()).floor()
-}
-
-/// Per-component rounding and truncation for floating-point `glam` vectors.
-pub trait CoordRound {
-    /// Rounds each component to the nearest integer, with ties rounding up.
-    fn round_half_up(&self) -> Self;
-    /// Rounds each component up to the nearest integer.
-    fn ceil(&self) -> Self;
-    /// Rounds each component down to the nearest integer.
-    fn floor(&self) -> Self;
-}
-
-macro_rules! add_glam_float_type {
-    ($($vec_type:ty, $float:ty),+) => {
-        $(
-            impl CoordRound for $vec_type {
-                fn round_half_up(&self) -> Self {
-                    Self {
-                        x: round_half_up(self.x),
-                        y: round_half_up(self.y),
-                        z: round_half_up(self.z),
-                    }
-                }
-
-                fn ceil(&self) -> Self {
-                    Self {
-                        x: self.x.ceil(),
-                        y: self.y.ceil(),
-                        z: self.z.ceil(),
-                    }
-                }
-
-                fn floor(&self) -> Self {
-                    Self {
-                        x: self.x.floor(),
-                        y: self.y.floor(),
-                        z: self.z.floor(),
-                    }
-                }
-            }
-
-            impl From<$vec_type> for Coord {
-                fn from(v: $vec_type) -> Self {
-                    let v = v.round_half_up();
-                    Self(IndexVec::new(v.x as Index, v.y as Index, v.z as Index))
-                }
-            }
-
-            impl From<&$vec_type> for Coord {
-                fn from(v: &$vec_type) -> Self {
-                    let v = v.round_half_up();
-                    Self(IndexVec::new(v.x as Index, v.y as Index, v.z as Index))
-                }
-            }
-
-            impl From<Coord> for $vec_type {
-                fn from(c: Coord) -> Self {
-                    <$vec_type>::new(
-                        c.x as $float,
-                        c.y as $float,
-                        c.z as $float,
-                    )
-                }
-            }
-
-            impl From<&Coord> for $vec_type {
-                fn from(c: &Coord) -> Self {
-                    <$vec_type>::new(
-                        c.x as $float,
-                        c.y as $float,
-                        c.z as $float,
-                    )
-                }
-            }
-        )+
-    };
-}
-
-add_glam_float_type!(glam::Vec3, f32, glam::DVec3, f64);
-
-macro_rules! add_glam_int_type {
-    ($($vec_type:ty, $int:ty),+) => {
-        $(
-            impl From<$vec_type> for Coord {
-                fn from(v: $vec_type) -> Self {
-                    Self(IndexVec {
-                        x: v.x as Index,
-                        y: v.y as Index ,
-                        z: v.z as Index,
-                    })
-                }
-            }
-
-            impl From<&$vec_type> for Coord {
-                fn from(v: &$vec_type) -> Self {
-                    Self(IndexVec {
-                        x: v.x as Index,
-                        y: v.y as Index ,
-                        z: v.z as Index,
-                    })
-                }
-            }
-
-            impl From<Coord> for $vec_type {
-                fn from(c: Coord) -> Self {
-                    <$vec_type>::new(
-                        c.x as $int,
-                        c.y as $int,
-                        c.z as $int,
-                    )
-                }
-            }
-
-            impl From<&Coord> for $vec_type {
-                fn from(c: &Coord) -> Self {
-                    <$vec_type>::new(
-                        c.x as $int,
-                        c.y as $int,
-                        c.z as $int,
-                    )
-                }
-            }
-        )+
-    };
-}
-
+add_glam_float_type!(Coord, glam::Vec3, f32, glam::DVec3, f64);
 add_glam_int_type!(
+    Coord,
     glam::I8Vec3,
     i8,
-    glam::U8Vec3,
-    u8,
     glam::I16Vec3,
     i16,
-    glam::U16Vec3,
-    u16,
     glam::IVec3,
     i32,
-    glam::UVec3,
-    u32,
     glam::I64Vec3,
     i64,
+    glam::U8Vec3,
+    u8,
+    glam::U16Vec3,
+    u16,
+    glam::UVec3,
+    u32,
     glam::U64Vec3,
     u64
 );
-
-macro_rules! add_int_conversions {
-    ($($int:ty),+) => {
-         $(
-             impl From<Coord> for ($int, $int, $int) {
-                 fn from(value: Coord) -> Self {
-                     (value.x as $int, value.y as $int, value.z as $int)
-                 }
-             }
-
-             impl From<&Coord> for ($int, $int, $int) {
-                 fn from(value: &Coord) -> Self {
-                     value.into()
-                 }
-             }
-
-             impl From<($int, $int, $int)> for Coord {
-                 fn from(value: ($int, $int, $int)) -> Self {
-                     Self(IndexVec {
-                         x: value.0 as Index,
-                         y: value.1 as Index,
-                         z: value.2 as Index,
-                     })
-                 }
-             }
-
-             impl From<&($int, $int, $int)> for Coord {
-                 fn from(value: &($int, $int, $int)) -> Self {
-                     value.into()
-                 }
-             }
-
-             impl From<[$int;3]> for Coord {
-                 fn from(vec: [$int;3]) -> Self {
-                     Self::new(vec[0] as Index, vec[1] as Index, vec[2] as Index)
-                 }
-             }
-
-             impl From<&[$int;3]> for Coord {
-                 fn from(vec: &[$int;3]) -> Self {
-                     Self::new(vec[0] as Index, vec[1] as Index, vec[2] as Index)
-                 }
-             }
-
-             impl From<Coord> for [$int;3] {
-                 fn from(coord: Coord) -> Self {
-                     [coord.x as $int, coord.y as $int, coord.z as $int]
-                 }
-             }
-
-             impl From<&Coord> for [$int;3] {
-                 fn from(coord: &Coord) -> Self {
-                     [coord.x as $int, coord.y as $int, coord.z as $int]
-                 }
-             }
-
-             #[doc = concat!("Converts ", stringify!($int), " v into a `Coord` with values (v as Index, v as Index, v as Index)")]
-             impl From<$int> for Coord {
-                 fn from(v: $int) -> Self {
-                     Self::new(v as Index, v as Index, v as Index)
-                 }
-             }
-         )+
-    }
-}
-
-add_int_conversions!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
-
-macro_rules! int_ops {
-    ($(($int:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt)),+ $(,)?) => {
-        $(
-            impl std::ops::$trait<[$int; 3]> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: [$int; 3]) -> Self::Output {
-                    let x = (self.x.to_i64().unwrap() $op rhs[0].to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs[1].to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs[2].to_i64().unwrap()) as Index;
-
-                    Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$trait<&[$int]> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: &[$int]) -> Self::Output {
-                    let mut v = self.as_array();
-
-                    for i in 0..rhs.len() {
-                        v[i] = (v[i].to_i64().unwrap() $op rhs[i].to_i64().unwrap()) as Index;
-                    }
-
-                    v.into()
-                }
-            }
-
-            impl std::ops::$trait<$int> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: $int) -> Self::Output {
-                    let x = (self.x.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-
-                    Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$assign_trait<[$int; 3]> for Coord {
-                fn $assign_method(&mut self, rhs: [$int; 3]) {
-                    self.x = (self.x.to_i64().unwrap() $op rhs[0].to_i64().unwrap()) as Index;
-                    self.y = (self.y.to_i64().unwrap() $op rhs[1].to_i64().unwrap()) as Index;
-                    self.z = (self.z.to_i64().unwrap() $op rhs[2].to_i64().unwrap()) as Index;
-                }
-            }
-
-            impl std::ops::$assign_trait<&[$int]> for Coord {
-                fn $assign_method(&mut self, rhs: &[$int]) {
-                    let mut v = self.as_array();
-
-                    for i in 0..rhs.len() {
-                        v[i] = (v[i].to_i64().unwrap() $op rhs[i].to_i64().unwrap()) as Index;
-                    }
-
-                    let x = self.x $op rhs[0] as Index;
-                    let y = self.y $op rhs[1] as Index;
-                    let z = self.z $op rhs[2] as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$assign_trait<$int> for Coord {
-                fn $assign_method(&mut self, rhs: $int) {
-                    let x = (self.x.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
-        )+
-    };
-}
-
-macro_rules! add_int_ops {
-    ($($int:ty),+) => {
-        $(
-            int_ops!(
-                ($int, Add, add, AddAssign, add_assign, +),
-                ($int, Sub, sub, SubAssign, sub_assign, -),
-                ($int, Mul, mul, MulAssign, mul_assign, *),
-                ($int, Div, div, DivAssign, div_assign, /),
-                ($int, BitAnd, bitand, BitAndAssign, bitand_assign, &),
-                ($int, BitOr, bitor, BitOrAssign, bitor_assign, |),
-                ($int, BitXor, bitxor, BitXorAssign, bitxor_assign, ^),
-                ($int, Shr, shr, ShrAssign, shr_assign, >>),
-                ($int, Shl, shl, ShlAssign, shl_assign, <<),
-            );
-
-            impl std::cmp::PartialEq<[$int;3]> for Coord {
-                fn eq(&self, rhs: &[$int;3]) -> bool {
-                    self.x == rhs[0] as Index && self.y == rhs[1] as Index && self.z == rhs[2] as Index
-                }
-            }
-
-            impl std::cmp::PartialOrd<[$int;3]> for Coord {
-                fn partial_cmp(&self, rhs: &[$int;3]) -> Option<std::cmp::Ordering> {
-                    Some(self.cmp(&rhs.into()))
-                }
-            }
-        )+
-    };
-}
-
-add_int_ops!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
-
-macro_rules! add_float_conversions {
-    ($($float:ty),+) => {
-         $(
-             impl From<Coord> for ($float, $float, $float) {
-                 fn from(value: Coord) -> Self {
-                     (value.x as $float, value.y as $float, value.z as $float)
-                 }
-             }
-
-             impl From<&Coord> for ($float, $float, $float) {
-                 fn from(value: &Coord) -> Self {
-                     value.into()
-                 }
-             }
-
-             impl From<($float, $float, $float)> for Coord {
-                 fn from(value: ($float, $float, $float)) -> Self {
-                     Self(IndexVec {
-                         x: round_half_up(value.0.to_f64().unwrap()) as Index,
-                         y: round_half_up(value.1.to_f64().unwrap()) as Index,
-                         z: round_half_up(value.2.to_f64().unwrap()) as Index,
-                     })
-                 }
-             }
-
-             impl From<&($float, $float, $float)> for Coord {
-                 fn from(value: &($float, $float, $float)) -> Self {
-                     value.into()
-                 }
-             }
-
-             impl From<[$float;3]> for Coord {
-                 fn from(vec: [$float;3]) -> Self {
-                     Self::new(
-                         round_half_up(vec[0].to_f64().unwrap()) as Index,
-                         round_half_up(vec[1].to_f64().unwrap()) as Index,
-                         round_half_up(vec[2].to_f64().unwrap()) as Index
-                     )
-                 }
-             }
-
-             impl From<&[$float;3]> for Coord {
-                 fn from(vec: &[$float;3]) -> Self {
-                     Self::new(
-                         round_half_up(vec[0].to_f64().unwrap()) as Index,
-                         round_half_up(vec[1].to_f64().unwrap()) as Index,
-                         round_half_up(vec[2].to_f64().unwrap()) as Index
-                     )
-                 }
-             }
-
-             impl From<Coord> for [$float;3] {
-                 fn from(coord: Coord) -> Self {
-                     [coord.x as $float, coord.y as $float, coord.z as $float]
-                 }
-             }
-
-             impl From<&Coord> for [$float;3] {
-                 fn from(coord: &Coord) -> Self {
-                     [coord.x as $float, coord.y as $float, coord.z as $float]
-                 }
-             }
-
-             #[doc = concat!("Converts ", stringify!($float), " v floato a `Coord` with values (v as Index, v as Index, v as Index)")]
-             impl From<$float> for Coord {
-                 fn from(v: $float) -> Self {
-                     Self::new(v as Index, v as Index, v as Index)
-                 }
-             }
-         )+
-    }
-}
-
-add_float_conversions!(f32, f64);
-
-macro_rules! float_ops {
-    ($(($float:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt)),+ $(,)?) => {
-        $(
-            impl std::ops::$trait<[$float; 3]> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: [$float; 3]) -> Self::Output {
-                    let x = (self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap()) as Index;
-                    let y = (self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap()) as Index;
-                    let z = (self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap()) as Index;
-
-                    Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$trait<&[$float]> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: &[$float]) -> Self::Output {
-                    let mut v = self.as_array();
-
-                    for i in 0..rhs.len() {
-                        v[i] = (v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap()) as Index;
-                    }
-
-                    v.into()
-                }
-            }
-
-            impl std::ops::$trait<$float> for Coord {
-                type Output = Self;
-
-                fn $method(self, rhs: $float) -> Self::Output {
-                    let x = (self.x.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-                    let y = (self.y.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-                    let z = (self.z.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-
-                    Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$assign_trait<[$float; 3]> for Coord {
-                fn $assign_method(&mut self, rhs: [$float; 3]) {
-                    self.x = (self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap()) as Index;
-                    self.y = (self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap()) as Index;
-                    self.z = (self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap()) as Index;
-                }
-            }
-
-            impl std::ops::$assign_trait<&[$float]> for Coord {
-                fn $assign_method(&mut self, rhs: &[$float]) {
-                    let mut v = self.as_array();
-
-                    for i in 0..rhs.len() {
-                        v[i] = (v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap()) as Index;
-                    }
-
-                    let x = self.x $op rhs[0] as Index;
-                    let y = self.y $op rhs[1] as Index;
-                    let z = self.z $op rhs[2] as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
-
-            impl std::ops::$assign_trait<$float> for Coord {
-                fn $assign_method(&mut self, rhs: $float) {
-                    let x = (self.x.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-                    let y = (self.y.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-                    let z = (self.z.to_f64().unwrap() $op rhs.to_f64().unwrap()) as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
-        )+
-    };
-}
-
-macro_rules! add_float_ops {
-    ($($float:ty),+) => {
-        $(
-            float_ops!(
-                ($float, Add, add, AddAssign, add_assign, +),
-                ($float, Sub, sub, SubAssign, sub_assign, -),
-                ($float, Mul, mul, MulAssign, mul_assign, *),
-                ($float, Div, div, DivAssign, div_assign, /),
-            );
-
-            impl std::cmp::PartialEq<[$float;3]> for Coord {
-                fn eq(&self, rhs: &[$float;3]) -> bool {
-                    self.x == rhs[0] as Index && self.y == rhs[1] as Index && self.z == rhs[2] as Index
-                }
-            }
-
-            impl std::cmp::PartialOrd<[$float;3]> for Coord {
-                fn partial_cmp(&self, rhs: &[$float;3]) -> Option<std::cmp::Ordering> {
-                    Some(self.cmp(&rhs.into()))
-                }
-            }
-        )+
-    };
-}
-
-add_float_ops!(f32, f64);
+add_int_conversions!(Coord, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+add_int_ops!(Coord, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+add_float_conversions!(Coord, f32, f64);
+add_float_ops!(Coord, f32, f64);
 
 #[cfg(test)]
 mod tests {
