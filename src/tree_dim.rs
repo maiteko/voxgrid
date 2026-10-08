@@ -22,6 +22,8 @@
 //! collapse to the origin / an infinite box, since sparse nodes are keyed by
 //! their child coordinate rather than by a fixed grid slot.
 
+use std::ops::Deref;
+
 use super::*;
 
 /// A chain of `MAX_DEPTH` node levels, stored **root-first**: index 0 is the
@@ -117,6 +119,18 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
+    pub const fn get_node_level(&self, node_level: usize) -> Option<NodeLevel<MAX_DEPTH>> {
+        if let Some(node) = self.get_node_level_size(node_level) {
+            Some(NodeLevel {
+                node_dim: node,
+                tree_dim: self,
+            })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
     /// Like [`TreeDim::get_node_level_size`] but panics when `node_level` is
     /// outside `(0, tree_depth]`.
     pub const fn node_level_size(&self, node_level: usize) -> &NodeDim {
@@ -128,133 +142,33 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
         &self.node_dims[self.tree_depth - node_level]
     }
 
+    pub const fn node_level(&self, node_level: usize) -> NodeLevel<MAX_DEPTH> {
+        NodeLevel {
+            node_dim: self.node_level_size(node_level),
+            tree_dim: self,
+        }
+    }
+
     #[inline]
     /// The leaf level (`node_dims[tree_depth - 1]`).
-    pub const fn leaf(&self) -> &NodeDim {
-        &self.node_dims[self.tree_depth - 1]
+    pub const fn leaf(&self) -> NodeLevel<MAX_DEPTH> {
+        self.node_level(1)
     }
 
     #[inline]
     /// The root level (`node_dims[0]`).
-    pub const fn root(&self) -> &NodeDim {
-        &self.node_dims[0]
+    pub const fn root(&self) -> NodeLevel<MAX_DEPTH> {
+        self.node_level(self.tree_depth)
     }
 
     #[inline]
-    pub const fn first_child(&self) -> &NodeDim {
-        &self.node_dims[1]
-    }
-
-    pub const fn at_index(&self, idx: usize) -> &NodeDim {
-        &self.node_dims[idx]
+    pub const fn first_child(&self) -> NodeLevel<MAX_DEPTH> {
+        self.node_level(self.tree_depth - 1)
     }
 
     #[inline]
-    /// The level below `node`; panics if `node` is the leaf (`node_level <= 1`).
-    pub const fn child(&self, node: &NodeDim) -> &NodeDim {
-        assert!(node.node_level > 1 && node.node_level <= self.tree_depth as u8);
-        self.node_level_size((node.node_level - 1) as usize)
-    }
-
-    #[inline]
-    /// The level above `node`, or `None` for the root or zero
-    pub const fn parent(&self, node: &NodeDim) -> Option<&NodeDim> {
-        if node.node_level >= self.tree_depth as u8 {
-            return None;
-        }
-
-        Some(self.node_level_size((node.node_level + 1) as usize))
-    }
-
-    #[inline]
-    /// The `voxel_length` of the level below `node`.
-    pub fn child_voxel_length(&self, node: &NodeDim) -> usize {
-        self.child(node).voxel_length
-    }
-
-    #[inline]
-    /// The child-index box inside `node`'s voxel box at `pos` (`voxel_bbox` divided by the child stride).
-    pub fn child_offset_bbox(&self, node: &NodeDim, pos: &Coord) -> CoordBBox {
-        let child_stride = self.child_voxel_length(node);
-        let mut bbox = node.voxel_bbox(pos);
-
-        bbox.min /= child_stride;
-        bbox.max /= child_stride;
-
-        bbox
-    }
-
-    /// The global [`Coord`] of each child origin inside `node` at `origin`.
-    pub fn child_coords(&self, node: &NodeDim, origin: &Coord) -> Vec<Coord> {
-        let local_bbox = node.local_bbox();
-        let child_stride = self.child_voxel_length(node);
-        let mut child_iter = local_bbox.to_xyz_iter();
-
-        node.make_child_buffer(&mut || {
-            let offset = child_iter
-                .next()
-                .expect("buffer size and iterator size should match")
-                * child_stride;
-
-            *origin + offset
-        })
-    }
-
-    /// Grow `bbox` to enclose the child nodes of `node` it touches.
-    pub fn enclose_children(&self, node: &NodeDim, mut bbox: CoordBBox) -> CoordBBox {
-        let child = self.child(node);
-
-        bbox.enclose_bbox(&child.voxel_bbox(&child.node_origin(&bbox.min)));
-
-        bbox.enclose_bbox(&child.voxel_bbox(&child.node_origin(&bbox.max)));
-
-        bbox
-    }
-
-    #[inline]
-    /// The number of child nodes of `node` that touch `bbox`.
-    ///
-    /// `bbox` is assumed to be aligned to the child stride (as produced by
-    /// [`TreeDim::enclose_children`]); an unaligned box may undercount because
-    /// the per-axis extent is floored by the stride.
-    pub fn child_count_in_bbox(&self, node: &NodeDim, bbox: &CoordBBox) -> usize {
-        let child_stride = self.child_voxel_length(node);
-        let [x, y, z]: [usize; 3] = (bbox.axis_dims() / child_stride).into();
-
-        x * y * z
-    }
-
-    /// The child [`Coord`]s of every child node of `node` overlapping `bbox`.
-    pub fn overlapping_children(&self, node: &NodeDim, bbox: &CoordBBox) -> Vec<Coord> {
-        let regions_bbox = self.enclose_children(node, *bbox);
-        let child_stride = self.child_voxel_length(node);
-        let capacity = self.child_count_in_bbox(node, &regions_bbox);
-
-        let mut result = Vec::with_capacity(capacity);
-
-        for x in regions_bbox.range_x().step_by(child_stride) {
-            for y in regions_bbox.range_y().step_by(child_stride) {
-                for z in regions_bbox.range_z().step_by(child_stride) {
-                    result.push([x, y, z].into());
-                }
-            }
-        }
-
-        result
-    }
-
-    /// The child [`Coord`]s of every node touching `node` at `pos`.
-    pub fn child_touching_neighbors(&self, node: &NodeDim, pos: &Coord) -> Vec<Coord> {
-        let child = self.child(node);
-        let pos = child.node_origin(pos);
-        let bbox = self.child_offset_bbox(node, &pos);
-        let child_stride = self.child_voxel_length(node);
-        let offset = pos / child_stride;
-
-        bbox.touching_neighbors(&offset)
-            .into_iter()
-            .map(|neighbor| (neighbor + offset) * child_stride)
-            .collect()
+    pub const fn at_index(&self, idx: usize) -> NodeLevel<MAX_DEPTH> {
+        self.node_level(idx + 1)
     }
 }
 
@@ -458,6 +372,155 @@ impl NodeDim {
 
             f(&self.node_origin(&(*pos + offset)));
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct NodeLevel<'a, const MAX_DEPTH: usize> {
+    tree_dim: &'a TreeDim<MAX_DEPTH>,
+    node_dim: &'a NodeDim,
+}
+
+impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
+    pub fn root(&self) -> Self {
+        self.tree_dim.root()
+    }
+
+    pub fn leaf(&self) -> Self {
+        self.tree_dim.leaf()
+    }
+
+    #[inline]
+    pub const fn child(&self) -> Option<NodeLevel<'a, MAX_DEPTH>> {
+        self.tree_dim
+            .get_node_level((self.node_dim.node_level - 1) as usize)
+    }
+
+    #[inline]
+    /// The level above `node`, or `None` for the root or zero
+    pub const fn parent(&self) -> Option<NodeLevel<'a, MAX_DEPTH>> {
+        self.tree_dim
+            .get_node_level((self.node_dim.node_level + 1) as usize)
+    }
+
+    #[inline]
+    /// Returns the "child's" voxel length
+    ///
+    /// In this context, each voxel of a leaf node is an independent "child"
+    /// with voxel length 1
+    pub fn child_stride(&self) -> usize {
+        match self.child() {
+            Some(c) => c.voxel_length,
+            None => 1,
+        }
+    }
+
+    #[inline]
+    /// BBox spanning the offsets (child's posisition / child's voxel length) of
+    /// all child nodes
+    ///
+
+    pub fn child_offset_bbox(&self, pos: &Coord) -> CoordBBox {
+        let child_stride = self.child_stride();
+
+        let mut bbox = self.voxel_bbox(pos);
+
+        bbox.min /= child_stride;
+        bbox.max /= child_stride;
+
+        bbox
+    }
+
+    /// The global [`Coord`] of each child origin inside `node` at `origin`.
+    pub fn child_coords(&self, origin: &Coord) -> Vec<Coord> {
+        let local_bbox = self.local_bbox();
+        let child_stride = self.child_stride();
+        let mut child_iter = local_bbox.to_xyz_iter();
+        let origin = self.node_origin(origin);
+        self.make_child_buffer(&mut || {
+            let offset = child_iter
+                .next()
+                .expect("buffer size and iterator size should match")
+                * child_stride;
+
+            origin + offset
+        })
+    }
+
+    /// Grow `bbox` to enclose the child nodes of `node` it touches.
+    pub fn enclose_children(&self, mut bbox: CoordBBox) -> CoordBBox {
+        if let Some(child) = self.child() {
+            bbox.enclose_bbox(&child.voxel_bbox(&child.node_origin(&bbox.min)));
+
+            bbox.enclose_bbox(&child.voxel_bbox(&child.node_origin(&bbox.max)));
+        }
+
+        bbox
+    }
+
+    #[inline]
+    /// The number of child nodes of `node` that touch `bbox`.
+    ///
+    /// `bbox` is assumed to be aligned to the child stride (as produced by
+    /// [`TreeDim::enclose_children`]); an unaligned box may undercount because
+    /// the per-axis extent is floored by the stride.
+    pub fn child_count_in_bbox(&self, bbox: &CoordBBox) -> usize {
+        let child_stride = match self.child() {
+            Some(c) => c.voxel_length,
+            None => 1, // no children means the children are voxels
+        };
+
+        let [x, y, z]: [usize; 3] = (bbox.axis_dims() / child_stride).into();
+
+        x * y * z
+    }
+
+    /// The child [`Coord`]s of every child node of `node` overlapping `bbox`.
+    pub fn overlapping_children(&self, bbox: &CoordBBox) -> Vec<Coord> {
+        let regions_bbox = self.enclose_children(*bbox);
+        let child_stride = self.child_stride();
+        let capacity = self.child_count_in_bbox(&regions_bbox);
+
+        let mut result = Vec::with_capacity(capacity);
+
+        for x in regions_bbox.range_x().step_by(child_stride) {
+            for y in regions_bbox.range_y().step_by(child_stride) {
+                for z in regions_bbox.range_z().step_by(child_stride) {
+                    result.push([x, y, z].into());
+                }
+            }
+        }
+
+        result
+    }
+
+    /// If child is a boundary cell of the current node, get all neighbors of this
+    /// child across the boundary line
+    ///
+    /// this is niche, but it was created to determine if a boundary neighbor cell
+    /// has beed loaded/generated to calculate the given child's SDF or Mesh
+    pub fn child_boundary_neighbors(&self, pos: &Coord) -> Vec<Coord> {
+        let child = match self.child() {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+        let pos = child.node_origin(pos);
+        let bbox = self.child_offset_bbox(&pos);
+        let child_stride = self.child_stride();
+        let offset = pos / child_stride;
+
+        bbox.touching_neighbors(&offset)
+            .into_iter()
+            .map(|neighbor| (neighbor + offset) * child_stride)
+            .collect()
+    }
+}
+
+impl<'a, const MAX_DEPTH: usize> Deref for NodeLevel<'a, MAX_DEPTH> {
+    type Target = NodeDim;
+
+    fn deref(&self) -> &Self::Target {
+        self.node_dim
     }
 }
 
@@ -671,12 +734,12 @@ mod tests {
         assert_eq!(leaf.log_dim, 2); // child_log_dims[0]
         assert_eq!(leaf.sum_child_dims, 0);
         assert_eq!(leaf.voxel_length, 4);
-
+        let child = root.child().unwrap();
         // Tiling invariant: total_dim(level) = total_dim(child) + log_dim(level).
-        assert_eq!(root.total_dim, tree.child(root).total_dim + root.log_dim);
+        assert_eq!(root.total_dim, child.total_dim + root.log_dim);
         assert_eq!(
-            tree.child(root).total_dim,
-            leaf.total_dim + tree.child(root).log_dim
+            root.child().unwrap().total_dim,
+            leaf.total_dim + root.child().unwrap().log_dim
         );
     }
 
@@ -714,7 +777,7 @@ mod tests {
         // Walk down from the root to the leaf.
         let mut node = tree.root();
         for _ in 0..7 {
-            node = tree.child(node);
+            node = node.child().unwrap();
         }
         assert_eq!(node.node_level, 1);
         assert!(node.is_leaf);
@@ -744,10 +807,10 @@ mod tests {
     #[test]
     fn test_child_parent_round_trip() {
         let tree = TreeDim::<4>::new(&[2, 3, 4]); // levels 1..=3
-        let l2 = tree.get_node_level_size(2).unwrap();
-        assert_eq!(tree.child(l2), tree.get_node_level_size(1).unwrap());
-        assert_eq!(tree.parent(l2), tree.get_node_level_size(3));
-        assert_eq!(tree.parent(tree.root()), None); // nothing above the root
+        let l2 = tree.get_node_level(2).unwrap();
+        assert_eq!(l2.child(), tree.get_node_level(1));
+        assert_eq!(l2.parent(), tree.get_node_level(3));
+        assert_eq!(tree.root().parent(), None); // nothing above the root
     }
 
     #[test]
@@ -767,10 +830,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_child_of_leaf_panics() {
         let tree = TreeDim::<3>::new(&[2, 3]);
-        let _ = tree.child(tree.leaf());
+        let _ = tree.leaf().child();
     }
 
     // ---- child enumeration / overlap queries (octree level 2, stride 2) ------
@@ -778,16 +840,16 @@ mod tests {
     #[test]
     fn test_child_voxel_length() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap();
-        assert_eq!(tree.child_voxel_length(l2), 2); // level 1 voxel_length
-        assert_eq!(tree.child(l2), tree.leaf());
+        let l2 = tree.get_node_level(2).unwrap();
+        assert_eq!(l2.child_stride(), 2); // level 1 voxel_length
+        assert_eq!(l2.child().unwrap(), tree.leaf());
     }
 
     #[test]
     fn test_child_coords_octree_level2() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap();
-        let coords = tree.child_coords(l2, &Coord::ORIGIN);
+        let l2 = tree.get_node_level(2).unwrap();
+        let coords = l2.child_coords(&Coord::ORIGIN);
         assert_eq!(coords.len(), 8); // 2 children per axis
 
         let mut got = coords;
@@ -809,8 +871,8 @@ mod tests {
     #[test]
     fn test_child_coords_at_offset() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap();
-        let coords = tree.child_coords(l2, &Coord::new(4, 4, 4));
+        let l2 = tree.get_node_level(2).unwrap();
+        let coords = l2.child_coords(&Coord::new(4, 4, 4));
         assert_eq!(coords.len(), 8);
         for c in &coords {
             for v in c.as_array() {
@@ -822,9 +884,9 @@ mod tests {
     #[test]
     fn test_child_offset_bbox() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap();
+        let l2 = tree.get_node_level(2).unwrap();
         // level-2 voxel box at (4,4,4) is [4..7]^3; divide by stride 2.
-        let bbox = tree.child_offset_bbox(l2, &Coord::new(4, 4, 4));
+        let bbox = l2.child_offset_bbox(&Coord::new(4, 4, 4));
         assert_eq!(bbox.min, Coord::new(2, 2, 2));
         assert_eq!(bbox.max, Coord::new(3, 3, 3));
     }
@@ -832,33 +894,33 @@ mod tests {
     #[test]
     fn test_enclose_children_grows_to_child_grid() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap();
+        let l2 = tree.get_node_level(2).unwrap();
 
         // A single point at the origin expands to the leaf voxel box [0..1]^3.
         let point = CoordBBox::new(Coord::ORIGIN, Coord::ORIGIN);
-        let enclosed = tree.enclose_children(l2, point);
+        let enclosed = l2.enclose_children(point);
         assert_eq!(enclosed.min, Coord::ORIGIN);
         assert_eq!(enclosed.max, Coord::new(1, 1, 1));
 
         // [2..5]^3 already spans whole child nodes, so it is unchanged.
         let aligned = CoordBBox::new(Coord::new(2, 2, 2), Coord::new(5, 5, 5));
-        assert_eq!(tree.enclose_children(l2, aligned), aligned);
+        assert_eq!(l2.enclose_children(aligned), aligned);
     }
 
     #[test]
     fn test_child_count_in_bbox() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap(); // stride 2
+        let l2 = tree.get_node_level(2).unwrap(); // stride 2
         assert_eq!(
-            tree.child_count_in_bbox(l2, &CoordBBox::new(Coord::ORIGIN, Coord::new(1, 1, 1))),
+            l2.child_count_in_bbox(&CoordBBox::new(Coord::ORIGIN, Coord::new(1, 1, 1))),
             1
         );
         assert_eq!(
-            tree.child_count_in_bbox(l2, &CoordBBox::new(Coord::ORIGIN, Coord::new(3, 3, 3))),
+            l2.child_count_in_bbox(&CoordBBox::new(Coord::ORIGIN, Coord::new(3, 3, 3))),
             8
         );
         assert_eq!(
-            tree.child_count_in_bbox(l2, &CoordBBox::new(Coord::ORIGIN, Coord::new(7, 7, 7))),
+            l2.child_count_in_bbox(&CoordBBox::new(Coord::ORIGIN, Coord::new(7, 7, 7))),
             64
         );
     }
@@ -866,17 +928,16 @@ mod tests {
     #[test]
     fn test_overlapping_children() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap(); // stride 2
+        let l2 = tree.get_node_level(2).unwrap(); // stride 2
 
         // A single point overlaps exactly one child node.
         assert_eq!(
-            tree.overlapping_children(l2, &CoordBBox::new(Coord::ORIGIN, Coord::ORIGIN)),
+            l2.overlapping_children(&CoordBBox::new(Coord::ORIGIN, Coord::ORIGIN)),
             vec![Coord::ORIGIN]
         );
 
         // The full level-2 box overlaps all 8 child nodes.
-        let all =
-            tree.overlapping_children(l2, &CoordBBox::new(Coord::ORIGIN, Coord::new(3, 3, 3)));
+        let all = l2.overlapping_children(&CoordBBox::new(Coord::ORIGIN, Coord::new(3, 3, 3)));
         assert_eq!(all.len(), 8);
         let mut got = all;
         got.sort();
@@ -897,10 +958,10 @@ mod tests {
     #[test]
     fn test_child_touching_neighbors() {
         let tree: TreeDim = TreeDim::octree();
-        let l2 = tree.get_node_level_size(2).unwrap(); // stride 2
+        let l2 = tree.get_node_level(2).unwrap(); // stride 2
 
         // The origin's node touches 7 child nodes in the negative octant.
-        let at_origin = tree.child_touching_neighbors(l2, &Coord::ORIGIN);
+        let at_origin = l2.child_boundary_neighbors(&Coord::ORIGIN);
         assert_eq!(at_origin.len(), 7);
         let mut got = at_origin;
         got.sort();
@@ -917,7 +978,7 @@ mod tests {
         assert_eq!(got, want);
 
         // Off origin, the child at grid index (2,2,2) touches 7 neighbours.
-        let at_offset = tree.child_touching_neighbors(l2, &Coord::new(4, 4, 4));
+        let at_offset = l2.child_boundary_neighbors(&Coord::new(4, 4, 4));
         assert_eq!(at_offset.len(), 7);
         assert!(at_offset.contains(&Coord::new(2, 2, 2)));
         assert!(at_offset.contains(&Coord::new(2, 4, 4)));

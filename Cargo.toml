@@ -15,7 +15,6 @@ categories = ["data-structures", "mathematics", "game-development"]
 index64 = []
 serde = ["dep:serde","glam/serde", "half/serde"]
 bytemuck = ["dep:bytemuck","glam/bytemuck"]
-voxelis = ["dep:voxelis"]
 
 [dependencies]
 anyhow = "1.0.104"
