@@ -109,7 +109,7 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
-    /// The [`NodeDim`] for a 1-based `node_level`, or `None` if it is `0` or above `MAX_DEPTH`.
+    /// The [`NodeDim`] for a 1-based `node_level`, or `None` if it is `0` or above `tree_depth`.
     pub const fn get_node_level_size(&self, node_level: usize) -> Option<&NodeDim> {
         if node_level > self.tree_depth || node_level == 0 {
             None
@@ -119,6 +119,7 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
+    /// The [`NodeLevel`] at a 1-based `node_level`, or `None` if it is `0` or outside the tree's depth.
     pub const fn get_node_level<'a>(
         &'a self,
         node_level: usize,
@@ -145,6 +146,8 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
         &self.node_dims[self.tree_depth - node_level]
     }
 
+    #[inline]
+    /// Like [`TreeDim::get_node_level`] but panics when `node_level` is outside `(0, tree_depth]`.
     pub const fn node_level<'a>(&'a self, node_level: usize) -> NodeLevel<'a, MAX_DEPTH> {
         NodeLevel {
             node_dim: self.node_level_size(node_level),
@@ -165,11 +168,13 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
+    /// The first child level of the root (`node_level == tree_depth - 1`).
     pub const fn first_child<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(self.tree_depth - 1)
     }
 
     #[inline]
+    /// The [`NodeLevel`] at 0-based `idx` (the leaf is `idx == 0`), via [`TreeDim::node_level`].
     pub const fn at_index<'a>(&'a self, idx: usize) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(idx + 1)
     }
@@ -378,6 +383,14 @@ impl NodeDim {
     }
 }
 
+/// A borrowed view of one level of a [`TreeDim`] tree.
+///
+/// It holds a reference to the owning [`TreeDim`] (`tree_dim`) and to that level's
+/// [`NodeDim`] (`node_dim`), and derefs to the `NodeDim` so its fields and methods
+/// are reachable directly. On top of that it offers parent/child navigation within
+/// the tree ([`NodeLevel::child`], [`NodeLevel::parent`], [`NodeLevel::root`],
+/// [`NodeLevel::leaf`]) plus the child-enumeration and overlap queries
+/// ([`NodeLevel::child_coords`], [`NodeLevel::overlapping_children`]).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct NodeLevel<'a, const MAX_DEPTH: usize> {
     tree_dim: &'a TreeDim<MAX_DEPTH>,
@@ -385,22 +398,27 @@ pub struct NodeLevel<'a, const MAX_DEPTH: usize> {
 }
 
 impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
+    #[inline]
+    /// The root level of the owning tree (see [`TreeDim::root`]).
     pub fn root(&self) -> Self {
         self.tree_dim.root()
     }
 
+    #[inline]
+    /// The leaf level of the owning tree (see [`TreeDim::leaf`]).
     pub fn leaf(&self) -> Self {
         self.tree_dim.leaf()
     }
 
     #[inline]
+    /// The level one below this one (`node_level - 1`), or `None` if this is the leaf.
     pub const fn child(&self) -> Option<NodeLevel<'a, MAX_DEPTH>> {
         self.tree_dim
             .get_node_level((self.node_dim.node_level - 1) as usize)
     }
 
     #[inline]
-    /// The level above `node`, or `None` for the root or zero
+    /// The level one above this one (`node_level + 1`), or `None` if this is the root.
     pub const fn parent(&self) -> Option<NodeLevel<'a, MAX_DEPTH>> {
         self.tree_dim
             .get_node_level((self.node_dim.node_level + 1) as usize)
@@ -419,10 +437,10 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
     }
 
     #[inline]
-    /// BBox spanning the offsets (child's posisition / child's voxel length) of
-    /// all child nodes
+    /// The box, in child-offset units, covering the children of the node at `pos`.
     ///
-
+    /// It is the node's [`NodeDim::voxel_bbox`] with each corner floored to the
+    /// [`NodeLevel::child_stride`].
     pub fn child_offset_bbox(&self, pos: &Coord) -> CoordBBox {
         let child_stride = self.child_stride();
 
@@ -434,7 +452,7 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         bbox
     }
 
-    /// The global [`Coord`] of each child origin inside `node` at `origin`.
+    /// The global [`Coord`] of each child origin inside the node at `origin`.
     pub fn child_coords(&self, origin: &Coord) -> Vec<Coord> {
         let local_bbox = self.local_bbox();
         let child_stride = self.child_stride();
@@ -450,7 +468,7 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         })
     }
 
-    /// Grow `bbox` to enclose the child nodes of `node` it touches.
+    /// Grow `bbox` to enclose the child nodes of this level it touches.
     pub fn enclose_children(&self, mut bbox: CoordBBox) -> CoordBBox {
         if let Some(child) = self.child() {
             bbox.enclose_bbox(&child.voxel_bbox(&child.node_origin(&bbox.min)));
@@ -462,23 +480,21 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
     }
 
     #[inline]
-    /// The number of child nodes of `node` that touch `bbox`.
+
+    /// The number of child nodes of this level that touch `bbox`.
     ///
-    /// `bbox` is assumed to be aligned to the child stride (as produced by
-    /// [`TreeDim::enclose_children`]); an unaligned box may undercount because
-    /// the per-axis extent is floored by the stride.
+    /// The bbox is transformed to enclose all children, ensuring
+    /// it aligns with self.child_stride()
     pub fn child_count_in_bbox(&self, bbox: &CoordBBox) -> usize {
-        let child_stride = match self.child() {
-            Some(c) => c.voxel_length,
-            None => 1, // no children means the children are voxels
-        };
+        let bbox = self.enclose_children(*bbox);
+        let child_stride = self.child_stride();
 
         let [x, y, z]: [usize; 3] = (bbox.axis_dims() / child_stride).into();
 
         x * y * z
     }
 
-    /// The child [`Coord`]s of every child node of `node` overlapping `bbox`.
+    /// The child [`Coord`]s of every child node of this level overlapping `bbox`.
     pub fn overlapping_children(&self, bbox: &CoordBBox) -> Vec<Coord> {
         let regions_bbox = self.enclose_children(*bbox);
         let child_stride = self.child_stride();
@@ -497,11 +513,11 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         result
     }
 
-    /// If child is a boundary cell of the current node, get all neighbors of this
-    /// child across the boundary line
+    /// The [`Coord`]s of a boundary child's neighbors across the boundary line.
     ///
-    /// this is niche, but it was created to determine if a boundary neighbor cell
-    /// has beed loaded/generated to calculate the given child's SDF or Mesh
+    /// Empty when `pos` is not a boundary child of this level (or the level has no
+    /// children). Used to check whether a boundary-neighbor cell has been
+    /// loaded/generated so child's SDF or mesh can be computed.
     pub fn child_boundary_neighbors(&self, pos: &Coord) -> Vec<Coord> {
         let child = match self.child() {
             Some(c) => c,
@@ -532,7 +548,6 @@ mod tests {
     use super::*;
 
     // ---- NodeDim construction ------------------------------------------------
-
     #[test]
     fn test_new_derives_fields() {
         let n = NodeDim::new(3, 2, 5, false);
