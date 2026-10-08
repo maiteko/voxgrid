@@ -8,6 +8,8 @@
 //! float type's finite MIN/MAX values. Finite values beyond the supported
 //! distance range also encode as those sentinels. NaN and infinities are
 //! rejected.
+//!
+//! Warning: unstable, incomplete, and untested
 
 use anyhow::{Result, bail};
 use half::f16;
@@ -293,10 +295,10 @@ where
 }
 
 /// Quantized `f16` values stored in `i16`.
-pub type Q16 = Quantized<f16, i16>;
+pub type Quant16 = Quantized<f16, i16>;
 
 /// Quantized `f32` values stored in `i32`.
-pub type Q32 = Quantized<f32, i32>;
+pub type Quant32 = Quantized<f32, i32>;
 
 /// Quantized `f64` values stored in `i64`.
-pub type Q64 = Quantized<f64, i64>;
+pub type Quant64 = Quantized<f64, i64>;

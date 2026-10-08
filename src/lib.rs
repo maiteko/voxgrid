@@ -56,6 +56,7 @@
 mod coord;
 mod coord_bbox;
 pub mod cube;
+pub mod quantized;
 mod tree_dim;
 mod vox_grid;
 
