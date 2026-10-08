@@ -119,7 +119,10 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
-    pub const fn get_node_level(&self, node_level: usize) -> Option<NodeLevel<MAX_DEPTH>> {
+    pub const fn get_node_level<'a>(
+        &'a self,
+        node_level: usize,
+    ) -> Option<NodeLevel<'a, MAX_DEPTH>> {
         if let Some(node) = self.get_node_level_size(node_level) {
             Some(NodeLevel {
                 node_dim: node,
@@ -142,7 +145,7 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
         &self.node_dims[self.tree_depth - node_level]
     }
 
-    pub const fn node_level(&self, node_level: usize) -> NodeLevel<MAX_DEPTH> {
+    pub const fn node_level<'a>(&'a self, node_level: usize) -> NodeLevel<'a, MAX_DEPTH> {
         NodeLevel {
             node_dim: self.node_level_size(node_level),
             tree_dim: self,
@@ -151,23 +154,23 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
 
     #[inline]
     /// The leaf level (`node_dims[tree_depth - 1]`).
-    pub const fn leaf(&self) -> NodeLevel<MAX_DEPTH> {
+    pub const fn leaf<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(1)
     }
 
     #[inline]
     /// The root level (`node_dims[0]`).
-    pub const fn root(&self) -> NodeLevel<MAX_DEPTH> {
+    pub const fn root<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(self.tree_depth)
     }
 
     #[inline]
-    pub const fn first_child(&self) -> NodeLevel<MAX_DEPTH> {
+    pub const fn first_child<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(self.tree_depth - 1)
     }
 
     #[inline]
-    pub const fn at_index(&self, idx: usize) -> NodeLevel<MAX_DEPTH> {
+    pub const fn at_index<'a>(&'a self, idx: usize) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(idx + 1)
     }
 }
