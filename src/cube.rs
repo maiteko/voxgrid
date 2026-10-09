@@ -805,6 +805,8 @@ pub const OPPOSITE_SIDE: [Side; SIDE_COUNT] = [
 
 #[cfg(test)]
 mod tests {
+    use crate::Index;
+
     use super::*;
 
     #[test]
@@ -983,7 +985,7 @@ mod tests {
                     _ => en.z,
                 };
                 assert_eq!(
-                    comp as i32, sign,
+                    comp as Index, sign,
                     "edge {:?} of {:?} should have outward normal component",
                     e, side,
                 );
@@ -1056,9 +1058,9 @@ mod tests {
         );
         for i in 0..27 {
             // z-outer, y-middle, x-inner: index = 9*(z+1) + 3*(y+1) + (x+1).
-            let z = (i / 9) as i32 - 1;
-            let y = (i % 9) as i32 / 3 - 1;
-            let x = (i % 3) as i32 - 1;
+            let z = (i / 9) as Index - 1;
+            let y = (i % 9) as Index / 3 - 1;
+            let x = (i % 3) as Index - 1;
             assert_eq!(
                 area[i].n_offset,
                 Coord::new(x, y, z),
