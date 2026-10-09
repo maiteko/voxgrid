@@ -31,7 +31,7 @@
 //! <pre>
 //!     o---11----o
 //!    /|        /|
-//!   6 9       7 10   Face Edges
+//!   6 9       7 10
 //!  /  |      /  |
 //! o----5----o   |
 //! |   o---8-|---o
@@ -382,7 +382,7 @@ pub struct MooreNeighbor {
 lazy_static! {
    /// list of the 12 undirected edges of a unit cube as pairs of vertex indices. Each U8Vec2
    /// (a, b) is an edge between vertex a and vertex b. Vertex numbering follows the convention:
-   /// index = x + 4*y + 16*z (Z outermost → Y middle → X innermost).
+   /// index = x + 2*y + 4*z (Z outermost, Y middle, X innermost).
    ///
    /// The table is built by iterating i=0..7, j=0..2 and connecting corner `i` with
    /// `i^(1<<j)` when they differ. Edges only appear where one endpoint has the bit set.
@@ -478,7 +478,7 @@ lazy_static! {
     /// matches CUBE_EDGES and EDGE_INTERSECTIONS vertex numbering (vertices 0..7):
     ///
     /// Generated with Z outermost, Y middle, X innermost:
-    /// index = x + 4*z + 16*y
+    /// index = x + 2*y + 4*z
     ///
     ///    6-------7
     ///   /|      /|
@@ -497,7 +497,7 @@ lazy_static! {
     pub static ref CORNER_OFFSETS: [Vec3; CORNER_COUNT] = {
         let mut corners = Vec::<Vec3>::with_capacity(CORNER_COUNT);
 
-        // z outermost, y middle, X innermost -> index = x + 4*y + 16*z (XYZ ordering)
+        // z outermost, y middle, x innermost -> index = x + 2*y + 4*z
         for z in 0..2 {
             for y in 0..2 {
                 for x in 0..2 {
@@ -720,15 +720,15 @@ pub const SIDE_CORNERS: [[Corner; 4]; SIDE_COUNT] = [
 /// counter-clockwise as seen from outside.
 ///
 /// <pre>
-///      o---11----o
-///     /|         /|
-///    6 9        7 10   Face Edges
-///   /   |        /    |
-///  o----5----o     |
-///  |   o---8-|---o
-/// 1   /       3   /
-/// |  2        |  4
-/// |/          |/   Edges follow the Edge enum.
+///     o---11----o
+///    /|        /|
+///   6 9       7 10
+///  /  |      /  |
+/// o----5----o   |
+/// |   o---8-|---o
+/// 1  /      3  /
+/// | 2       | 4
+/// |/        |/
 /// o----0----o
 /// </pre>
 pub const SIDE_EDGES: [[Edge; 4]; SIDE_COUNT] = [
@@ -785,12 +785,6 @@ pub const SIDE_NEIGHBORING_DISTANCES: [f32; SIDE_COUNT] = [1.0; SIDE_COUNT];
 /// connectivity is identical for every face, so a single array is shared.
 ///
 /// The winding puts the face seam along the `(c2, c3)` / `(c0, c1)` diagonal.
-///
-/// `<pre>
-/// 3---2
-/// | / |
-/// 0---1
-/// </pre>`
 pub const SIDE_TRIANGLES: [u32; 6] = [0, 2, 1, 0, 3, 2];
 
 /// The same two triangles as `SIDE_TRIANGLES` but with the winding reversed,

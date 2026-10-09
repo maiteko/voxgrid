@@ -1,6 +1,6 @@
 [package]
 name = "voxgrid"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 authors = ["Sean Pace <sean.m.pace@outlook.com>"]
 license = "MIT OR Apache-2.0"
