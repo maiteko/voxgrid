@@ -1,8 +1,16 @@
 //! Tables in the cube module all respect the following conventions.
 //!
-//! Axis naming follows Godot 4 (right-handed), as in the C++ `Cube::SideAxis`
-//! convention with the `g_side_normals` x/z bug fixed:
-//! `East` = +x, `West` = -x, `Up` = +y, `Down` = -y, `North` = +z, `South` = -z.
+//! Many of these tables are refactored from [godot_voxel's](https://github.com/Zylann/godot_voxel) cube_tables constants
+//! with the following caveats:
+//!
+//! 1. reordered to match the EDGES generation below, making it consistent with the
+//!    EDGE_INTERSECTION conventions
+//! 2. reordered to a right handed system (+z = north)
+//! 3. using cardinal direction naming for sides
+//!
+//! EDGES and EDGE_INTERSECTIONS generation adapted from mikolalysenko's
+//! [surfacenets.js](https://github.com/mikolalysenko/mikolalysenko.github.com/blob/master/Isosurface/js/surfacenets.js)
+//! example.
 //!
 //! Corner numbering (index = x + 2*y + 4*z):
 //!
