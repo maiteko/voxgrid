@@ -1,4 +1,10 @@
-//! Tables in the cube module all respect the following conventions
+//! Tables in the cube module all respect the following conventions.
+//!
+//! Axis naming follows Godot 4 (right-handed), as in the C++ `Cube::SideAxis`
+//! convention with the `g_side_normals` x/z bug fixed:
+//! `East` = +x, `West` = -x, `Up` = +y, `Down` = -y, `North` = +z, `South` = -z.
+//!
+//! Corner numbering (index = x + 2*y + 4*z):
 //!
 //! <pre>
 //!    6-------7
@@ -11,7 +17,8 @@
 //! 0-------1       o--x
 //! </pre>
 //!
-//! Sides are ordered according to the Side enum.
+//! Sides are ordered according to the Side enum (`East`, `West`, `Down`, `Up`,
+//! `South`, `North`).
 //!
 //! <pre>
 //!     o---11----o
@@ -25,8 +32,6 @@
 //! |/        |/
 //! o----0----o
 //! </pre>
-//!
-//! Edges are ordered according to the Edge enum (only g_edge_inormals!).
 
 use crate::Coord;
 use glam::{U8Vec2, Vec3};
@@ -37,18 +42,22 @@ use std::{panic, slice::Iter};
 const SQRT_2: f64 = 1.4142135;
 const SQRT_3: f64 = 1.7320508;
 
-/// The six faces of a cube. The first six variants (`Left`..`Front`) index the
+/// The six faces of a cube. The first six variants (`East`..`North`) index the
 /// `SIDE_NORMALS`, `SIDE_TANGENTS`, `SIDE_CORNERS`, and `SIDE_EDGES` tables;
 /// `Count` is the number of real variants and `Unknown` is the default sentinel.
+///
+/// Variants are ordered as in `Cube::SideAxis` (positive-x first), and use the
+/// Godot 4 (right-handed) axis naming:
+/// `East` = +x, `West` = -x, `Down` = -y, `Up` = +y, `South` = -z, `North` = +z.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Side {
-    Left = 0,
-    Right,
-    Bottom,
-    Top,
-    Back,
-    Front,
+    East = 0,
+    West,
+    Down,
+    Up,
+    South,
+    North,
 
     Count,
     #[default]
@@ -56,61 +65,61 @@ pub enum Side {
 }
 
 const VALID_SIDES: [Side; 6] = [
-    Side::Left,
-    Side::Right,
-    Side::Bottom,
-    Side::Top,
-    Side::Back,
-    Side::Front,
+    Side::East,
+    Side::West,
+    Side::Down,
+    Side::Up,
+    Side::South,
+    Side::North,
 ];
 
 impl Side {
-    /// Returns the face normal for this side (`Coord::MAX` for count/unknown).
-    pub fn get_normal(&self) -> Coord {
+    /// Returns the face normal for this side, or `None` for count/unknown.
+    pub fn get_normal(&self) -> Option<Coord> {
         if *self == Self::Count || *self == Self::Unknown {
-            Coord::MAX
+            None
         } else {
-            SIDE_NORMALS[usize::from(*self)]
+            Some(SIDE_NORMALS[usize::from(*self)])
         }
     }
 
-    /// Returns the tangent-frame 4-vector for this side (`[f32::MAX; 4]` for
-    /// count/unknown).
-    pub fn get_tangent(&self) -> [f32; 4] {
+    /// Returns the tangent-frame 4-vector for this side, or `None` for
+    /// count/unknown.
+    pub fn get_tangent(&self) -> Option<[f32; 4]> {
         if *self == Self::Count || *self == Self::Unknown {
-            [f32::MAX; 4]
+            None
         } else {
-            SIDE_TANGENTS[usize::from(*self)]
+            Some(SIDE_TANGENTS[usize::from(*self)])
         }
     }
 
-    /// Returns the four corner-vertex indices bounding this side
-    /// (`[usize::MAX; 4]` for count/unknown).
-    pub fn get_corners(&self) -> [usize; 4] {
+    /// Returns the four `Corner`s bounding this side, or `None` for
+    /// count/unknown.
+    pub fn get_corners(&self) -> Option<[Corner; 4]> {
         if *self == Self::Count || *self == Self::Unknown {
-            [usize::MAX; 4]
+            None
         } else {
-            SIDE_CORNERS[usize::from(*self)]
+            Some(SIDE_CORNERS[usize::from(*self)])
         }
     }
 
-    /// Returns the four edge indices bounding this side (`[usize::MAX; 4]` for
-    /// count/unknown).
-    pub fn get_edges(&self) -> [usize; 4] {
+    /// Returns the four `Edge`s bounding this side, or `None` for
+    /// count/unknown.
+    pub fn get_edges(&self) -> Option<[Edge; 4]> {
         if *self == Self::Count || *self == Self::Unknown {
-            [usize::MAX; 4]
+            None
         } else {
-            SIDE_EDGES[usize::from(*self)]
+            Some(SIDE_EDGES[usize::from(*self)])
         }
     }
 
-    /// Returns the distance to a face-adjacent neighbor for this side
-    /// (`f32::MAX` for count/unknown).
-    pub fn get_neighboring_distance(&self) -> f32 {
+    /// Returns the distance to a face-adjacent neighbor for this side, or
+    /// `None` for count/unknown.
+    pub fn get_neighboring_distance(&self) -> Option<f32> {
         if *self == Self::Count || *self == Self::Unknown {
-            f32::MAX
+            None
         } else {
-            SIDE_NEIGHBORING_DISTANCES[usize::from(*self)]
+            Some(SIDE_NEIGHBORING_DISTANCES[usize::from(*self)])
         }
     }
 
@@ -122,12 +131,15 @@ impl Side {
     /// or `None` if `d` is not one of the six axis directions.
     pub fn from_face_direction(d: Coord) -> Option<Side> {
         let d = d.unit_clamp();
-        if d.sum() != 1 {
+        // Use the absolute sum so negative-axis directions (West, Down, South)
+        // are accepted: `sum` on a coordinate with a negative component would
+        // otherwise wrap to a large unsigned value.
+        if d.abs().sum() != 1 {
             return None;
         }
 
         for side in Self::all_sides() {
-            if side.get_normal() == d {
+            if side.get_normal() == Some(d) {
                 return Some(*side);
             }
         }
@@ -136,60 +148,25 @@ impl Side {
     }
 }
 
-/// Face directions named by axis sign (Minecraft-style), interchangeable with
-/// `Side` via `From`. Uses West/East/Down/Up/North/South naming to make
-/// `SIDE_NORMALS` reasoning clearer.
-#[repr(usize)]
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
-pub enum CardinalSide {
-    /// Negative X
-    West = 0,
-    /// Positive X
-    East,
-    /// Negative Y
-    Down,
-    /// Positive Y
-    Up,
-    /// Negative Z
-    North,
-    /// Positive Z
-    South,
-
-    Count,
-    #[default]
-    Unknown,
-}
-
-const VALID_CARDINAL_SIDES: [CardinalSide; 6] = [
-    CardinalSide::West,
-    CardinalSide::East,
-    CardinalSide::Down,
-    CardinalSide::Up,
-    CardinalSide::North,
-    CardinalSide::South,
-];
-
-impl CardinalSide {
-    pub fn all_cardinal_sides() -> Iter<'static, CardinalSide> {
-        VALID_CARDINAL_SIDES.iter()
-    }
-}
-
-impl From<Side> for CardinalSide {
-    fn from(value: Side) -> Self {
-        let value: usize = value.into();
-        value.into()
-    }
-}
-
-impl From<CardinalSide> for Side {
-    fn from(value: CardinalSide) -> Self {
-        let value: usize = value.into();
-        value.into()
-    }
-}
-
+/// <pre>
+///     o---11----o
+///    /|        /|
+///   6 9       7 10   Face Edges
+///  /  |      /  |
+/// o----5----o   |
+/// |   o---8-|---o
+/// 1  /      3  /
+/// | 2       | 4
+/// |/        |/
+/// o----0----o
+/// </pre>
 /// The twelve edges of a cube, indexed into `EDGES` and `EDGE_NORMALS`.
+///
+/// Each edge is named after its two *constant* axes, listed in `z`, `x`, `y`
+/// order (skipping the axis the edge runs along), using the axis names
+/// `North` = +z, `South` = -z, `West` = -x, `East` = +x, `Down` = -y, `Up` = +y.
+/// The variant order matches the `EDGES` table, where edge `i` connects corner
+/// `i ^ (1 << j)` for the generated iteration order.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Edge {
@@ -199,8 +176,8 @@ pub enum Edge {
     SouthEast,
     EastDown,
     SouthUp,
-    EastUp,
     WestUp,
+    EastUp,
     NorthDown,
     NorthWest,
     NorthEast,
@@ -217,8 +194,8 @@ const VALID_EDGES: [Edge; 12] = [
     Edge::SouthEast,
     Edge::EastDown,
     Edge::SouthUp,
-    Edge::EastUp,
     Edge::WestUp,
+    Edge::EastUp,
     Edge::NorthDown,
     Edge::NorthWest,
     Edge::NorthEast,
@@ -226,23 +203,22 @@ const VALID_EDGES: [Edge; 12] = [
 ];
 
 impl Edge {
-    /// Returns edge associated with this side.
-    /// Returns U8Vec2::MAX for count/unknown
-    pub fn get_edge(&self) -> U8Vec2 {
+    /// Returns the edge associated with this side, or `None` for count/unknown.
+    pub fn get_edge(&self) -> Option<U8Vec2> {
         if *self == Self::Count || *self == Self::Unknown {
-            U8Vec2::MAX
+            None
         } else {
-            EDGES[usize::from(*self)]
+            Some(EDGES[usize::from(*self)])
         }
     }
 
-    /// Returns the outward-facing normal for this edge (`Vec3::MAX` for
-    /// count/unknown).
-    pub fn get_normal(&self) -> Vec3 {
+    /// Returns the outward-facing normal for this edge, or `None` for
+    /// count/unknown.
+    pub fn get_normal(&self) -> Option<Vec3> {
         if *self == Self::Count || *self == Self::Unknown {
-            Vec3::MAX
+            None
         } else {
-            EDGE_NORMALS[usize::from(*self)]
+            Some(EDGE_NORMALS[usize::from(*self)])
         }
     }
 
@@ -252,14 +228,31 @@ impl Edge {
 }
 
 /// The eight corners of a cube, indexed into `CORNER_OFFSETS` and
-/// `CORNER_NORMALS`, following the module's corner-numbering convention.
+/// `CORNER_NORMALS`.
+///
+/// A corner index is `x + 2*y + 4*z` (x, y, z each 0 or 1), the same bit
+/// ordering used by `EDGES` and `CORNER_OFFSETS`. Each corner is named after its
+/// three axes in `z`, `x`, `y` order, using the axis names `North` = +z,
+/// `South` = -z, `West` = -x, `East` = +x, `Down` = -y, `Up` = +y
+/// (Godot 4 right-handed, so `North` is towards +z):
+///
+/// <pre>
+/// 0: SouthWestDown   (0,0,0)
+/// 1: SouthEastDown   (1,0,0)
+/// 2: SouthWestUp     (0,1,0)
+/// 3: SouthEastUp     (1,1,0)
+/// 4: NorthWestDown   (0,0,1)
+/// 5: NorthEastDown   (1,0,1)
+/// 6: NorthWestUp     (0,1,1)
+/// 7: NorthEastUp     (1,1,1)
+/// </pre>
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Corner {
     SouthWestDown = 0,
     SouthEastDown,
-    SouthEastup,
-    SouthWestup,
+    SouthWestUp,
+    SouthEastUp,
     NorthWestDown,
     NorthEastDown,
     NorthWestUp,
@@ -273,8 +266,8 @@ pub enum Corner {
 const VALID_CORNERS: [Corner; 8] = [
     Corner::SouthWestDown,
     Corner::SouthEastDown,
-    Corner::SouthEastup,
-    Corner::SouthWestup,
+    Corner::SouthWestUp,
+    Corner::SouthEastUp,
     Corner::NorthWestDown,
     Corner::NorthEastDown,
     Corner::NorthWestUp,
@@ -282,22 +275,22 @@ const VALID_CORNERS: [Corner; 8] = [
 ];
 
 impl Corner {
-    /// Returns the corner's local-space offset (`Vec3::MAX` for count/unknown).
-    pub fn get_offset(&self) -> Vec3 {
+    /// Returns the corner's local-space offset, or `None` for count/unknown.
+    pub fn get_offset(&self) -> Option<Vec3> {
         if *self == Self::Count || *self == Self::Unknown {
-            Vec3::MAX
+            None
         } else {
-            CORNER_OFFSETS[usize::from(*self)]
+            Some(CORNER_OFFSETS[usize::from(*self)])
         }
     }
 
-    /// Returns the outward-facing normal for this corner (`Vec3::MAX` for
-    /// count/unknown).
-    pub fn get_normal(&self) -> Vec3 {
+    /// Returns the outward-facing normal for this corner, or `None` for
+    /// count/unknown.
+    pub fn get_normal(&self) -> Option<Vec3> {
         if *self == Self::Count || *self == Self::Unknown {
-            Vec3::MAX
+            None
         } else {
-            CORNER_NORMALS[usize::from(*self)]
+            Some(CORNER_NORMALS[usize::from(*self)])
         }
     }
 
@@ -306,37 +299,64 @@ impl Corner {
     }
 }
 
-/// The 26 face/edge/corner-adjacent voxels of a 3x3x3 Moore neighborhood
-/// (center excluded), indexed into `MOORE_NEIGHBORHOOD_3D`.
+/// The 26 face/edge/corner-adjacent voxels of a 3x3x3 Moore neighborhood,
+/// ordered by z (South to North), then y (Down to Up), then x (West to East).
+/// The center is excluded.
 #[repr(usize)]
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 pub enum Neighbor {
+    /// (-1, -1, -1)
     SouthWestDown = 0,
+    /// (0, -1, -1)
     SouthDown,
+    /// (1, -1, -1)
     SouthEastDown,
+    /// (-1, 0, -1)
     SouthWest,
+    /// (0, 0, -1)
     South,
+    /// (1, 0, -1)
     SouthEast,
+    /// (-1, 1, -1)
     SouthWestUp,
+    /// (0, 1, -1)
     SouthUp,
+    /// (1, 1, -1)
     SouthEastUp,
+    /// (-1, -1, 0)
     WestDown,
+    /// (0, -1, 0)
     Down,
+    /// (1, -1, 0)
     EastDown,
+    /// (-1, 0, 0)
     West,
-    // Center,
+    // Center (0,0,0)
+    /// (1, 0, 0)
     East,
+    /// (-1, 1, 0)
     WestUp,
+    /// (0, 1, 0)
     Up,
+    /// (1, 1, 0)
     EastUp,
+    /// (-1, -1, 1)
     NorthWestDown,
+    /// (0, -1, 1)
     NorthDown,
+    /// (1, -1, 1)
     NorthEastDown,
+    /// (-1, 0, 1)
     NorthWest,
+    /// (0, 0, 1)
     North,
+    /// (1, 0, 1)
     NorthEast,
+    /// (-1, 1, 1)
     NorthWestUp,
+    /// (0, 1, 1)
     NorthUp,
+    /// (1, 1, 1)
     NorthEastUp,
 
     Count,
@@ -374,13 +394,13 @@ const VALID_NEIGHBORS: [Neighbor; 26] = [
 ];
 
 impl Neighbor {
-    /// Returns the Moore-neighborhood entry for this neighbor
-    /// (`MooreNeighbor::default()` for count/unknown).
-    pub fn get_neighbor(&self) -> MooreNeighbor {
+    /// Returns the Moore-neighborhood entry for this neighbor, or `None` for
+    /// count/unknown.
+    pub fn get_neighbor(&self) -> Option<MooreNeighbor> {
         if *self == Self::Count || *self == Self::Unknown {
-            MooreNeighbor::default()
+            None
         } else {
-            MOORE_NEIGHBORHOOD_3D[usize::from(*self)]
+            Some(MOORE_NEIGHBORHOOD_3D[usize::from(*self)])
         }
     }
 
@@ -442,7 +462,7 @@ lazy_static! {
         cube_edges.try_into().unwrap()
     };
 
-    /// EDGE_TABLE: lookup table mapping each cube vertex inside/outside configuration
+    /// lookup table mapping each cube vertex inside/outside configuration
     /// (8-bit index, 0..255) to a 12-bit edge-intersection bitmask (u16).
     ///
     /// - Input index i (0..255): bit v of i is 1 if vertex v is "inside" (e.g., value > isolevel),
@@ -624,58 +644,470 @@ lazy_static! {
             }
         }
         neighbors.into_boxed_slice()
-    };
+     };
+
+     /// The 27 voxels of a 3x3x3 Moore area around the origin, *including* the
+     /// center, ordered by z (outer), then y, then x (innermost) — the
+     /// `g_ordered_moore_area_3d` layout, which lets multithreaded code iterate
+     /// blocks in a fixed order to avoid deadlocks. The center sits at index 13.
+    pub static ref ORDERED_MOORE_AREA_3D: Box<[MooreNeighbor]> = {
+        let mut neighbors = Vec::<MooreNeighbor>::with_capacity(27);
+
+        for z in -1..=1 {
+            for y in -1..=1 {
+                for x in -1..=1 {
+                    let neighbor = MooreNeighbor {
+                        n_offset: Coord::new( x, y, z ),
+                        n_distance: match x.abs()+y.abs()+z.abs() {
+                            0 => 0.,
+                            1 => 1.,
+                            2 => SQRT_2,
+                            3 => SQRT_3,
+                            x => panic!("added offsets should be between 0 and 3. Got {}", x),
+                         }
+                     };
+
+                    neighbors.push(neighbor)
+                 }
+             }
+         }
+
+        neighbors.into_boxed_slice()
+     };
 }
 
-/// The unit face normal for each `Side`.
+/// The unit face normal for each `Side`, in `Side` order
+/// (`East`, `West`, `Down`, `Up`, `South`, `North`).
 pub const SIDE_NORMALS: [Coord; Side::Count as usize] = [
-    Coord::new(-1, 0, 0), // LEFT
-    Coord::new(1, 0, 0),  // RIGHT
-    //
-    Coord::new(0, -1, 0), // BOTTOM
-    Coord::new(0, 1, 0),  // TOP
-    //
-    Coord::new(0, 0, -1), // BACK
-    Coord::new(0, 0, 1),  // FRONT
+    Coord::new(1, 0, 0),  // EAST  (+x)
+    Coord::new(-1, 0, 0), // WEST  (-x)
+    Coord::new(0, -1, 0), // DOWN  (-y)
+    Coord::new(0, 1, 0),  // UP    (+y)
+    Coord::new(0, 0, -1), // SOUTH (-z)
+    Coord::new(0, 0, 1),  // NORTH (+z)
 ];
 
 /// A tangent-frame 4-vector per `Side`: the first three components give the
 /// tangent direction for that face; the fourth is a constant `1.0`.
 pub const SIDE_TANGENTS: [[f32; 4]; Side::Count as usize] = [
-    // Left  (-1,0,0): tangent along +z
-    [0.0, 0.0, 1.0, 1.0],
-    // Right (+1,0,0): tangent along -z
+    // East   (+1,0,0): tangent along -z
     [0.0, 0.0, -1.0, 1.0],
-    // Bottom (0,-1,0): tangent along +x
+    // West   (-1,0,0): tangent along +z
+    [0.0, 0.0, 1.0, 1.0],
+    // Down   (0,-1,0): tangent along +x
     [1.0, 0.0, 0.0, 1.0],
-    // Top (0,+1,0): tangent along -x
+    // Up     (0,+1,0): tangent along -x
     [-1.0, 0.0, 0.0, 1.0],
-    // Back (0,0,-1): tangent along +x
+    // South  (0,0,-1): tangent along +x
     [1.0, 0.0, 0.0, 1.0],
-    // Front(0,0,+1): tangent along -x
+    // North  (0,0,+1): tangent along -x
     [-1.0, 0.0, 0.0, 1.0],
 ];
 
-/// The four corner-vertex indices of each face, in `Side` order.
-pub const SIDE_CORNERS: [[usize; 4]; Side::Count as usize] = [
-    [2, 0, 6, 4], // WEST
-    [1, 3, 5, 7], // EAST
-    [2, 3, 0, 1], // DOWN
-    [4, 5, 6, 7], // UP
-    [3, 2, 7, 6], // NORTH
-    [0, 1, 4, 5], // SOUTH
+/// The four `Corner`s bounding each face, in `Side` order.
+///
+/// Each row lists the face's corners counter-clockwise as seen from outside the
+/// cube. The triangle indices for a face come from `SIDE_TRIANGLES`.
+pub const SIDE_CORNERS: [[Corner; 4]; Side::Count as usize] = [
+    [
+        // EAST
+        Corner::NorthEastDown,
+        Corner::SouthEastDown,
+        Corner::SouthEastUp,
+        Corner::NorthEastUp,
+    ],
+    [
+        // WEST
+        Corner::SouthWestDown,
+        Corner::NorthWestDown,
+        Corner::NorthWestUp,
+        Corner::SouthWestUp,
+    ],
+    [
+        // DOWN
+        Corner::SouthWestDown,
+        Corner::SouthEastDown,
+        Corner::NorthEastDown,
+        Corner::NorthWestDown,
+    ],
+    [
+        // UP
+        Corner::SouthEastUp,
+        Corner::SouthWestUp,
+        Corner::NorthWestUp,
+        Corner::NorthEastUp,
+    ],
+    [
+        // SOUTH
+        Corner::SouthEastDown,
+        Corner::SouthWestDown,
+        Corner::SouthWestUp,
+        Corner::SouthEastUp,
+    ],
+    [
+        // NORTH
+        Corner::NorthWestDown,
+        Corner::NorthEastDown,
+        Corner::NorthEastUp,
+        Corner::NorthWestUp,
+    ],
 ];
 
-/// The four edge indices bounding each face, in `Side` order.
-pub const SIDE_EDGES: [[usize; 4]; Side::Count as usize] = [
-    [1, 2, 6, 9],   // WEST
-    [3, 4, 7, 10],  // EAST
-    [0, 1, 3, 5],   // DOWN
-    [8, 9, 10, 11], // UP
-    [5, 6, 7, 11],  // NORTH
-    [0, 2, 4, 8],   // SOUTH
+/// The four `Edge`s bounding each face, in `Side` order.
+///
+/// Edge `i` of a face connects `SIDE_CORNERS[side][i]` with
+/// `SIDE_CORNERS[side][(i + 1) % 4]`, so the two together walk the face
+/// counter-clockwise as seen from outside.
+///
+/// <pre>
+///      o---11----o
+///     /|         /|
+///    6 9        7 10   Face Edges
+///   /   |        /    |
+///  o----5----o     |
+///  |   o---8-|---o
+/// 1   /       3   /
+/// |  2        |  4
+/// |/          |/   Edges follow the Edge enum.
+/// o----0----o
+/// </pre>
+pub const SIDE_EDGES: [[Edge; 4]; Side::Count as usize] = [
+    [
+        // EAST
+        Edge::EastDown,
+        Edge::SouthEast,
+        Edge::EastUp,
+        Edge::NorthEast,
+    ],
+    [
+        // WEST
+        Edge::WestDown,
+        Edge::NorthWest,
+        Edge::WestUp,
+        Edge::SouthWest,
+    ],
+    [
+        // DOWN
+        Edge::SouthDown,
+        Edge::EastDown,
+        Edge::NorthDown,
+        Edge::WestDown,
+    ],
+    [
+        // UP
+        Edge::SouthUp,
+        Edge::WestUp,
+        Edge::NorthUp,
+        Edge::EastUp,
+    ],
+    [
+        // SOUTH
+        Edge::SouthDown,
+        Edge::SouthWest,
+        Edge::SouthUp,
+        Edge::SouthEast,
+    ],
+    [
+        // NORTH
+        Edge::NorthDown,
+        Edge::NorthEast,
+        Edge::NorthUp,
+        Edge::NorthWest,
+    ],
 ];
 
 /// The distance to a face-adjacent neighbor for each `Side` (`1.0` on a unit
 /// voxel grid).
 pub const SIDE_NEIGHBORING_DISTANCES: [f32; 6] = [1.0; 6];
+
+/// The two triangles making up each face, as indices into `SIDE_CORNERS`, in the
+/// same order as `Cube::g_side_quad_triangles`: `{0, 2, 1, 0, 3, 2}`. The
+/// connectivity is identical for every face, so a single array is shared.
+///
+/// `<pre>
+/// 3---2
+/// | / |
+/// 0---1
+/// </pre>`
+pub const SIDE_TRIANGLES: [u32; 6] = [0, 2, 1, 0, 3, 2];
+
+/// For each `Side`, the index (in `Side` order) of the opposite face. Mirrors
+/// `Cube::g_opposite_side`: `East`↔`West`, `Down`↔`Up`, `South`↔`North`.
+pub const OPPOSITE_SIDE: [Side; Side::Count as usize] = [
+    Side::West,  // EAST
+    Side::East,  // WEST
+    Side::Up,    // DOWN
+    Side::Down,  // UP
+    Side::North, // SOUTH
+    Side::South, // NORTH
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn side_normals_match_axis_convention() {
+        for side in Side::all_sides() {
+            let expected = match side {
+                Side::East => (1, 0, 0),
+                Side::West => (-1, 0, 0),
+                Side::Down => (0, -1, 0),
+                Side::Up => (0, 1, 0),
+                Side::South => (0, 0, -1),
+                Side::North => (0, 0, 1),
+                _ => unreachable!(),
+            };
+            assert_eq!(
+                side.get_normal(),
+                Some(Coord::new(expected.0, expected.1, expected.2)),
+                "normal of {:?}",
+                side,
+            );
+        }
+    }
+
+    #[test]
+    fn from_face_direction_roundtrips() {
+        for side in Side::all_sides() {
+            let n = side.get_normal().unwrap();
+            assert_eq!(Side::from_face_direction(n), Some(*side));
+        }
+    }
+
+    #[test]
+    fn opposite_side_is_involution() {
+        for i in 0..Side::Count as usize {
+            let j = usize::from(OPPOSITE_SIDE[i]);
+            assert_eq!(
+                usize::from(OPPOSITE_SIDE[j]),
+                i,
+                "opposite of opposite of {} should be {}",
+                i,
+                i,
+            );
+            assert_eq!(
+                SIDE_NORMALS[j], -SIDE_NORMALS[i],
+                "opposite of {} should have negated normal",
+                i,
+            );
+        }
+    }
+
+    #[test]
+    fn corner_names_match_offsets() {
+        // index = x + 2*y + 4*z, with North = +z, South = -z.
+        let cases = [
+            (Corner::SouthWestDown, (0, 0, 0)),
+            (Corner::SouthEastDown, (1, 0, 0)),
+            (Corner::SouthWestUp, (0, 1, 0)),
+            (Corner::SouthEastUp, (1, 1, 0)),
+            (Corner::NorthWestDown, (0, 0, 1)),
+            (Corner::NorthEastDown, (1, 0, 1)),
+            (Corner::NorthWestUp, (0, 1, 1)),
+            (Corner::NorthEastUp, (1, 1, 1)),
+        ];
+        for (c, e) in cases {
+            let p = CORNER_OFFSETS[usize::from(c)];
+            assert_eq!((p.x as i32, p.y as i32, p.z as i32), e, "offset of {:?}", c,);
+        }
+    }
+
+    #[test]
+    fn corner_normals_match_offsets() {
+        for c in Corner::all_corners() {
+            let p = CORNER_OFFSETS[usize::from(*c)];
+            let n = CORNER_NORMALS[usize::from(*c)];
+            let expect = (
+                if p.x == 0. { -1 } else { 1 },
+                if p.y == 0. { -1 } else { 1 },
+                if p.z == 0. { -1 } else { 1 },
+            );
+            assert_eq!(
+                (n.x as i32, n.y as i32, n.z as i32),
+                expect,
+                "normal of {:?}",
+                c,
+            );
+        }
+    }
+
+    #[test]
+    fn edge_names_match_normals() {
+        let cases = [
+            (Edge::SouthDown, (0, -1, -1)),
+            (Edge::SouthWest, (-1, 0, -1)),
+            (Edge::WestDown, (-1, -1, 0)),
+            (Edge::SouthEast, (1, 0, -1)),
+            (Edge::EastDown, (1, -1, 0)),
+            (Edge::SouthUp, (0, 1, -1)),
+            (Edge::WestUp, (-1, 1, 0)),
+            (Edge::EastUp, (1, 1, 0)),
+            (Edge::NorthDown, (0, -1, 1)),
+            (Edge::NorthWest, (-1, 0, 1)),
+            (Edge::NorthEast, (1, 0, 1)),
+            (Edge::NorthUp, (0, 1, 1)),
+        ];
+        for (e, n) in cases {
+            let p = EDGE_NORMALS[usize::from(e)];
+            assert_eq!((p.x as i32, p.y as i32, p.z as i32), n, "normal of {:?}", e,);
+        }
+    }
+
+    #[test]
+    fn edge_normals_match_edges() {
+        for e in Edge::all_edges() {
+            let edge = EDGES[usize::from(*e)];
+            let ca = CORNER_OFFSETS[edge.x as usize];
+            let cb = CORNER_OFFSETS[edge.y as usize];
+            let nx = if (cb.x - ca.x).abs() < 0.5 {
+                if ca.x == 0. { -1. } else { 1. }
+            } else {
+                0.
+            };
+            let ny = if (cb.y - ca.y).abs() < 0.5 {
+                if ca.y == 0. { -1. } else { 1. }
+            } else {
+                0.
+            };
+            let nz = if (cb.z - ca.z).abs() < 0.5 {
+                if ca.z == 0. { -1. } else { 1. }
+            } else {
+                0.
+            };
+            let got = EDGE_NORMALS[usize::from(*e)];
+            assert_eq!(
+                (got.x as i32, got.y as i32, got.z as i32),
+                (nx as i32, ny as i32, nz as i32),
+                "normal of {:?}",
+                e,
+            );
+        }
+    }
+
+    #[test]
+    fn side_edges_walk_side_corners() {
+        for side in Side::all_sides() {
+            let corners = SIDE_CORNERS[usize::from(*side)];
+            let edges = SIDE_EDGES[usize::from(*side)];
+            for i in 0..4 {
+                let a = usize::from(corners[i]);
+                let b = usize::from(corners[(i + 1) % 4]);
+                let edge = EDGES[usize::from(edges[i])];
+                assert!(
+                    (usize::from(edge.x) == a && usize::from(edge.y) == b)
+                        || (usize::from(edge.x) == b && usize::from(edge.y) == a),
+                    "edge {} of {:?} should connect corners {} and {}",
+                    i,
+                    side,
+                    a,
+                    b,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn face_edges_point_outward() {
+        for side in Side::all_sides() {
+            let n = SIDE_NORMALS[usize::from(*side)];
+            let (axis, sign) = if n.x != 0 {
+                (0, n.x)
+            } else if n.y != 0 {
+                (1, n.y)
+            } else {
+                (2, n.z)
+            };
+            for e in SIDE_EDGES[usize::from(*side)] {
+                let en = EDGE_NORMALS[usize::from(e)];
+                let comp = match axis {
+                    0 => en.x,
+                    1 => en.y,
+                    _ => en.z,
+                };
+                assert_eq!(
+                    comp as i32, sign,
+                    "edge {:?} of {:?} should have outward normal component",
+                    e, side,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn faces_use_all_edges_and_corners() {
+        let mut edge_counts = [0u32; 12];
+        let mut corner_counts = [0u32; 8];
+        for side in Side::all_sides() {
+            for c in SIDE_CORNERS[usize::from(*side)] {
+                corner_counts[usize::from(c)] += 1;
+            }
+            for e in SIDE_EDGES[usize::from(*side)] {
+                edge_counts[usize::from(e)] += 1;
+            }
+        }
+        for c in 0..8 {
+            assert_eq!(
+                corner_counts[c], 3,
+                "corner {} should be shared by exactly 3 faces",
+                c,
+            );
+        }
+        for e in 0..12 {
+            assert_eq!(
+                edge_counts[e], 2,
+                "edge {} should be shared by exactly 2 faces",
+                e,
+            );
+        }
+    }
+
+    #[test]
+    fn side_triangles_reference_valid_corners() {
+        for &t in SIDE_TRIANGLES.iter() {
+            assert!((0..4).contains(&t), "triangle index {} out of range", t,);
+        }
+    }
+
+    #[test]
+    fn moore_neighborhood_has_26_noncenter_voxels() {
+        assert_eq!(MOORE_NEIGHBORHOOD_3D.len(), 26);
+        for n in MOORE_NEIGHBORHOOD_3D.iter() {
+            let x = n.n_offset.x;
+            let y = n.n_offset.y;
+            let z = n.n_offset.z;
+            assert!((x, y, z) != (0, 0, 0), "neighborhood must exclude center");
+            let man = x.abs() + y.abs() + z.abs();
+            let dist = match man {
+                1 => 1.0_f64,
+                2 => SQRT_2,
+                3 => SQRT_3,
+                other => panic!("unexpected manhattan distance {}", other),
+            };
+            assert!((n.n_distance - dist).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn ordered_moore_area_has_27_voxels_including_center() {
+        let area = &*ORDERED_MOORE_AREA_3D;
+        assert_eq!(area.len(), 27);
+        assert_eq!(
+            area[13].n_offset,
+            Coord::ORIGIN,
+            "center must be at index 13"
+        );
+        for i in 0..27 {
+            // z-outer, y-middle, x-inner: index = 9*(z+1) + 3*(y+1) + (x+1).
+            let z = (i / 9) as i32 - 1;
+            let y = (i % 9) as i32 / 3 - 1;
+            let x = (i % 3) as i32 - 1;
+            assert_eq!(
+                area[i].n_offset,
+                Coord::new(x, y, z),
+                "ordered area index {}",
+                i,
+            );
+        }
+    }
+}

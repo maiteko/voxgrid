@@ -48,7 +48,15 @@ Key tables:
 - `SIDE_NORMALS`, `SIDE_TANGENTS`, `SIDE_CORNERS`, `SIDE_EDGES`,
   `SIDE_NEIGHBORING_DISTANCES`.
 - `MOORE_NEIGHBORHOOD_3D` and `MOORE_NEIGHBORHOOD_3D_SHELL_2`.
-- Enums `Side`, `CardinalSide`, `Edge`, `Corner`, `Neighbor`.
+- Enums `Side`, `CardinalSide`, `Edge`, `Corner`, `Neighbor`
+
+Enum primitive value matches the respective table indexes, so they can be accessed with `SIDE_NORMALS[Side::Front.into()]`.
+Enums also provide functions for direct conversions/iterators:
+
+```rust
+Side::Front.get_normals();
+Side::Front.
+```
 
 ## Index type
 

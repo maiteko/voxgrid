@@ -455,15 +455,15 @@ impl CoordBBox {
     /// use voxgrid::{Coord, CoordBBox};
     /// let boundary = CoordBBox::new(Coord::new(-1,-1,-1), Coord::new(1,1,1));
     /// let coord = Coord::new(1,1,1);
-    /// let directions = boundary.touching_neighbors(&coord);
+    /// let directions = boundary.boundary_neighbors(&coord);
     /// assert_eq!(directions.len(), 7);
     ///
     /// let coord = Coord::new(0,0,0);
-    /// let directions = boundary.touching_neighbors(&coord);
+    /// let directions = boundary.boundary_neighbors(&coord);
     /// assert_eq!(directions.len(), 0);
     ///
     /// let coord = Coord::new(0,1,0);
-    /// let directions = boundary.touching_neighbors(&coord);
+    /// let directions = boundary.boundary_neighbors(&coord);
     /// assert_eq!(directions.len(), 1);
     /// ```
     pub fn boundary_neighbors(&self, pos: &Coord) -> Vec<Coord> {
