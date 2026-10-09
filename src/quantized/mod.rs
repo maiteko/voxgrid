@@ -120,15 +120,6 @@ impl<F, I> Quantized<F, I> {
 /// The number of integer steps per unit of the represented float.
 const SCALE: f64 = 1024.0;
 
-/// Rounds to the nearest integer, with halfway cases rounded away from zero.
-fn round_half_up(x: f64) -> f64 {
-    if x.is_sign_negative() {
-        (x - 0.5).ceil()
-    } else {
-        (x + 0.5).floor()
-    }
-}
-
 /// Implements a float/integer representation pair using an explicit
 /// supported-distance cutoff.
 ///
@@ -162,7 +153,7 @@ macro_rules! impl_quantized_repr {
                     });
                 }
 
-                let scaled = round_half_up(value64 * SCALE);
+                let scaled = (value64 * SCALE).round();
 
                 // Keep the sentinel codes exclusively for sentinel values.
                 if scaled <= <$storage>::MIN as f64 || scaled >= <$storage>::MAX as f64 {

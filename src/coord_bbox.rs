@@ -271,7 +271,6 @@ impl CoordBBox {
 
     /// Translate the box so its `max` corner lands on `max`, shifting `min` by the
     /// same delta.
-
     pub fn move_max(&mut self, max: &Coord) {
         self.min += *max - self.max;
         self.max = *max;
@@ -279,7 +278,6 @@ impl CoordBBox {
 
     /// Write the box's eight corners into `buffer`, which must hold at least eight
     /// elements; return an error otherwise.
-
     pub fn get_corner_points(&self, buffer: &mut [Coord]) -> Result<()> {
         if buffer.len() < 8 {
             return Err(anyhow!("buffer must have a length of at least 8"));
@@ -309,15 +307,46 @@ impl CoordBBox {
     }
 
     /// Offset `pos` by `min` to convert a local coordinate to a global one.
+    /// Returns an error if `pos` is outside of the bbox range.
+    ///
+    /// The conversion is `min + pos` computed modulo the index type's width, so it
+    /// is well-defined even for a full-index-space box (`[Coord::MIN, Coord::MAX]`),
+    /// whose extent overflows the signed index type.
     #[inline]
-    pub fn local_to_global(&self, pos: &Coord) -> Coord {
-        self.min + *pos
+    pub fn local_to_global(&self, pos: &LocalCoord) -> Result<Coord> {
+        // The valid local extent is `max - min`, computed modulo 2^N so a
+        // full-index-space box reports the whole range rather than overflowing.
+        let extent: LocalCoord = UIndexVec::from(self.max)
+            .wrapping_sub(UIndexVec::from(self.min))
+            .into();
+
+        if pos.component_gt(&extent) {
+            return Err(anyhow!("Outside BBox range. BBox: {}, Pos: {}", self, pos));
+        }
+
+        // `min + pos`, computed modulo 2^N.
+        Ok(UIndexVec::from(self.min)
+            .wrapping_add(UIndexVec::from(*pos))
+            .into())
     }
 
     /// Subtract `min` from `pos` to convert a global coordinate to a local one.
+    /// Returns an error if `pos` is outside of the bbox range.
+    ///
+    /// The conversion is `pos - min` computed modulo the index type's width, so it
+    /// is well-defined even for a full-index-space box (`[Coord::MIN, Coord::MAX]`),
+    /// whose extent overflows the signed index type.
     #[inline]
-    pub fn global_to_local(&self, pos: &Coord) -> Coord {
-        *pos - self.min
+    pub fn global_to_local(&self, pos: &Coord) -> Result<LocalCoord> {
+        if pos.component_lt(&self.min) || pos.component_gt(&self.max) {
+            // pos is not within this bbox
+            return Err(anyhow!("Outside BBox range. BBox: {}, Pos: {}", self, pos));
+        }
+
+        // `pos - min`, computed modulo 2^N so it works at the full index range.
+        Ok(UIndexVec::from(*pos)
+            .wrapping_sub(UIndexVec::from(self.min))
+            .into())
     }
 
     /// Return whether `pos` lies on any boundary of the box.
@@ -348,25 +377,21 @@ impl CoordBBox {
 
     /// Return the box's integer center, `min` and `max` averaged with integer
     /// division.
-
     pub fn center(&self) -> Coord {
         (self.min + self.max) / 2
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `x` axis.
-
     pub fn range_x(&self) -> std::ops::RangeInclusive<Index> {
         self.min.x..=self.max.x
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `y` axis.
-
     pub fn range_y(&self) -> std::ops::RangeInclusive<Index> {
         self.min.y..=self.max.y
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `z` axis.
-
     pub fn range_z(&self) -> std::ops::RangeInclusive<Index> {
         self.min.z..=self.max.z
     }
@@ -441,7 +466,7 @@ impl CoordBBox {
     /// let directions = boundary.touching_neighbors(&coord);
     /// assert_eq!(directions.len(), 1);
     /// ```
-    pub fn touching_neighbors(&self, pos: &Coord) -> Vec<Coord> {
+    pub fn boundary_neighbors(&self, pos: &Coord) -> Vec<Coord> {
         let boundary = self.boundary_direction(pos);
 
         if boundary == Coord::ORIGIN {
@@ -464,6 +489,12 @@ impl CoordBBox {
             .collect::<HashSet<Coord>>()
             .into_iter()
             .collect()
+    }
+}
+
+impl std::fmt::Display for CoordBBox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}..{}]", self.min, self.max)
     }
 }
 
@@ -1022,11 +1053,6 @@ mod test {
     fn test_coord_bbox_shift_assign_ops() {
         let bbox = CoordBBox::new(Coord::new(16, 16, 16), Coord::new(32, 32, 32));
 
-        // Test ShlAssign - but wait, this is buggy in the original code!
-        // The original code has: self.min <<= rhs; self.max <<= rhs;
-        // But ShrAssign has: self.min >>= rhs; self.max <<= rhs;
-        // Let me just test what actually happens based on the implementation
-
         let mut bbox = bbox;
         bbox <<= 1;
         assert_eq!(bbox.min, Coord::new(32, 32, 32));
@@ -1058,5 +1084,56 @@ mod test {
         or_assign |= 1;
         assert_eq!(or_assign.min, Coord::new(15, 15, 15));
         assert_eq!(or_assign.max, Coord::new(15, 15, 15));
+    }
+
+    // ============== Local/Global Conversion Tests ==============
+    #[test]
+    fn test_coord_bbox_local_global_round_trip() {
+        // A box in negative space exercises the modular unsigned arithmetic.
+        let bbox = CoordBBox::new(Coord::new(-10, -5, 0), Coord::new(10, 5, 10));
+
+        // The corners map to the local origin and the local extent.
+        assert_eq!(bbox.global_to_local(&bbox.min).unwrap(), LocalCoord::ORIGIN);
+        assert_eq!(
+            bbox.global_to_local(&bbox.max).unwrap(),
+            LocalCoord::new(20, 10, 10)
+        );
+
+        // global -> local -> global is the identity for in-range coordinates.
+        let coords = [bbox.min, bbox.max, Coord::new(-3, 1, 7), Coord::ORIGIN];
+        for c in &coords {
+            let local = bbox.global_to_local(c).unwrap();
+            assert_eq!(bbox.local_to_global(&local).unwrap(), *c);
+        }
+
+        // local -> global -> local is the identity for in-range coordinates.
+        let local = LocalCoord::new(5, 2, 8);
+        let global = bbox.local_to_global(&local).unwrap();
+        assert_eq!(bbox.global_to_local(&global).unwrap(), local);
+    }
+
+    #[test]
+    fn test_coord_bbox_local_global_out_of_range() {
+        let bbox = CoordBBox::new(Coord::new(-10, -5, 0), Coord::new(10, 5, 10));
+
+        // global_to_local rejects coordinates outside [min, max].
+        assert!(bbox.global_to_local(&Coord::new(11, 0, 0)).is_err());
+        assert!(bbox.global_to_local(&Coord::new(-11, 0, 0)).is_err());
+
+        // local_to_global rejects coordinates beyond the extent.
+        let extent = bbox.global_to_local(&bbox.max).unwrap();
+        assert!(bbox.local_to_global(&extent.single_offset_by(1)).is_err());
+    }
+
+    #[test]
+    fn test_coord_bbox_global_to_local_max_range() {
+        let bbox = CoordBBox::new(Coord::MIN, Coord::MAX);
+
+        // Confirm transform works at max extents
+        assert_eq!(bbox.global_to_local(&Coord::MIN).unwrap(), LocalCoord::MIN);
+        assert_eq!(bbox.global_to_local(&Coord::MAX).unwrap(), LocalCoord::MAX);
+
+        assert_eq!(bbox.local_to_global(&LocalCoord::MIN).unwrap(), Coord::MIN);
+        assert_eq!(bbox.local_to_global(&LocalCoord::MAX).unwrap(), Coord::MAX);
     }
 }
