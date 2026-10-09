@@ -206,6 +206,12 @@ pub struct NodeDim {
     pub is_sparse: bool,
     /// `true` for the leaf level, where `node_level == 1` and there are no children.
     pub is_leaf: bool,
+    /// `voxel_length^3`, the number of voxels in a node's buffer at this level.
+    /// `0` for sparse nodes, whose voxel space is unbounded and cannot be a fixed buffer.
+    pub voxel_buffer_size: usize,
+    /// `child_length^3`, the number of immediate children in a node's buffer at this level.
+    /// `0` for sparse nodes, whose child space is unbounded and cannot be a fixed buffer.
+    pub child_buffer_size: usize,
 }
 
 impl Default for NodeDim {
@@ -216,8 +222,9 @@ impl Default for NodeDim {
 
 impl NodeDim {
     /// Construct a [`NodeDim`], deriving `total_dim`, `child_length`,
-    /// `voxel_length`, `coord_dim_mask`, and `is_leaf` (true when
-    /// `node_level == 1`).
+    /// `voxel_length`, `coord_dim_mask`, `is_leaf` (true when
+    /// `node_level == 1`), and the `*_buffer_size` fields (`0` for sparse nodes,
+    /// whose buffers are unbounded).
     ///
     /// ```
     /// use voxgrid::NodeDim;
@@ -255,6 +262,8 @@ impl NodeDim {
             coord_dim_mask,
             is_sparse,
             is_leaf: node_level == 1,
+            voxel_buffer_size: if is_sparse { 0 } else { voxel_length.pow(3) },
+            child_buffer_size: if is_sparse { 0 } else { child_length.pow(3) },
         }
     }
 
@@ -528,7 +537,7 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         let child_stride = self.child_stride();
         let offset = pos / child_stride;
 
-        bbox.touching_neighbors(&offset)
+        bbox.boundary_neighbors(&offset)
             .into_iter()
             .map(|neighbor| (neighbor + offset) * child_stride)
             .collect()
@@ -669,13 +678,13 @@ mod tests {
         let n = NodeDim::new(1, 2, 3, false);
         assert_eq!(
             n.global_to_local_child(&Coord::new(4, 4, 4)),
-            Coord::new(1, 1, 1)
+            LocalCoord::new(1, 1, 1)
         );
         assert_eq!(
             n.global_to_local_child(&Coord::new(8, 8, 8)),
-            Coord::new(0, 0, 0)
+            LocalCoord::ORIGIN
         );
-        assert_eq!(n.global_to_local_child(&Coord::ORIGIN), Coord::ORIGIN);
+        assert_eq!(n.global_to_local_child(&Coord::ORIGIN), LocalCoord::ORIGIN);
     }
 
     #[test]
@@ -684,13 +693,16 @@ mod tests {
         let n = NodeDim::new(1, 2, 3, false);
         assert_eq!(
             n.global_to_local_voxel(&Coord::new(10, 10, 10)),
-            Coord::new(2, 2, 2)
+            LocalCoord::new(2, 2, 2)
         );
         assert_eq!(
             n.global_to_local_voxel(&Coord::new(15, 15, 15)),
-            Coord::new(7, 7, 7)
+            LocalCoord::new(7, 7, 7)
         );
-        assert_eq!(n.global_to_local_voxel(&Coord::new(8, 8, 8)), Coord::ORIGIN);
+        assert_eq!(
+            n.global_to_local_voxel(&Coord::new(8, 8, 8)),
+            LocalCoord::ORIGIN
+        );
     }
 
     #[test]
@@ -699,8 +711,8 @@ mod tests {
         // so they diverge when sum_child_dims != 0.
         let n = NodeDim::new(1, 2, 3, false);
         let pos = Coord::new(10, 10, 10);
-        assert_eq!(n.global_to_local_child(&pos), Coord::ORIGIN);
-        assert_eq!(n.global_to_local_voxel(&pos), Coord::new(2, 2, 2));
+        assert_eq!(n.global_to_local_child(&pos), LocalCoord::ORIGIN);
+        assert_eq!(n.global_to_local_voxel(&pos), LocalCoord::new(2, 2, 2));
         assert_ne!(n.global_to_local_child(&pos), n.global_to_local_voxel(&pos));
     }
 

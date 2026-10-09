@@ -15,11 +15,17 @@ Instead, it provides common types, traits, and tables that are needed when build
 
 `Coord` is based on the OpenVDB types of the same name, implementing a lot of the same core functionality, and providing some new functionality. `Coord` is defined as a thin wrapper around glam IVec3, and provides several conversion/arithmetic implementations specific to a voxel tree/bbox. It also implements conversions between various glam vec types and array/tuple triplets.
 
-There is an `index64` feature which enables `i64`/`u64` with the intent of representing float types with `f128`, however, there is no `f128` glam type, so it currently uses `f64`. This means that float indexes cannot represent the entire integer coordinate range.
+There is an `index64` feature which enables `i64`/`u64` with the intent of representing float types with `f128`, however, there is no `f128` glam type, so it currently uses `f64`. This means that float indexes cannot represent the entire integer coordinate range, and floating-point conversions are subject to precision/overflow error for large magnitudes (see `index64`). Long term, a 128-bit float index will be explored for the `index64` path, but it is not a priority right now.
+
+## LocalCoord
+
+`LocalCoord` is an unsigned coordinate (a thin wrapper around a `glam` unsigned vector, `UVec3`/`U64Vec3`) used to address a *local* frame of reference — the child/voxel grid of a `NodeDim`/`NodeLevel`, or a `CoordBBox`. It is a pure index and carries no meaning on its own; the conversion to and from a global [`Coord`] is only well-defined relative to that frame, which is why the conversion lives on `CoordBBox`/`NodeDim` rather than on the type itself. Without it, root/sparse `NodeLevel`s lack the precision to index their entire child/voxel space.
+
+Because it is a pure index, `LocalCoord` does not convert to or from floating-point types.
 
 ## CoordBBox
 
-It is also based on the OpenVDB type of the same name, providing a two-point, axis-aligned bounding box. It provides tools for expanding, enclosing, checking overlaps, and converting between global and bbox local coordinates.
+It is also based on the OpenVDB type of the same name, providing a two-point, axis-aligned bounding box. It provides tools for expanding, enclosing, checking overlaps, and converting between global and bbox local coordinates via `local_to_global`/`global_to_local`, which return a `Result` and error when the coordinate lies outside the box's range.
 
 ## TreeDim
 

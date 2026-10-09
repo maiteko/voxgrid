@@ -124,7 +124,7 @@ impl Coord {
     }
 
     pub fn from_float<T: Real + NumCast>(v: T) -> Self {
-        let v = v.to_i64();
+        let v = round_half_up(v);
         #[cfg(feature = "index64")]
         let v = v.to_i64().unwrap();
 
@@ -416,6 +416,7 @@ impl std::ops::Neg for Coord {
 add_glam_float_type!(Coord, glam::Vec3, f32, glam::DVec3, f64);
 add_glam_int_type!(
     Coord,
+    Index,
     glam::I8Vec3,
     i8,
     glam::I16Vec3,
@@ -433,8 +434,12 @@ add_glam_int_type!(
     glam::U64Vec3,
     u64
 );
-add_int_conversions!(Coord, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
-add_int_ops!(Coord, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+add_int_conversions!(
+    Coord, Index, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
+);
+add_int_ops!(
+    Coord, Index, to_i64, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
+);
 add_float_conversions!(Coord, f32, f64);
 add_float_ops!(Coord, f32, f64);
 

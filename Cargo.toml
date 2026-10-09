@@ -1,6 +1,6 @@
 [package]
 name = "voxgrid"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 authors = ["Sean Pace <sean.m.pace@outlook.com>"]
 license = "MIT OR Apache-2.0"
@@ -9,7 +9,6 @@ repository = "https://github.com/maiteko/voxgrid.git"
 description = "Voxel coordinate and bounding-box math with log-scaled voxel-tree addressing"
 keywords = ["voxel", "octree", "coordinate", "bounding-box", "godot"]
 categories = ["data-structures", "mathematics", "game-development"]
-# TODO: set your repository URL before publishing, e.g. repository = "https://github.com/you/voxgrid"
 
 [features]
 index64 = []
@@ -18,6 +17,7 @@ bytemuck = ["dep:bytemuck","glam/bytemuck"]
 
 [dependencies]
 anyhow = "1.0.104"
+assertables = "10.1.0"
 bytemuck = { version = "1.25.2", features = ["derive"], optional = true }
 glam = { version = "0.29.3" }
 half = { version = "2.7.1", features = ["num-traits"] }

@@ -7,8 +7,13 @@
 //!
 //! - [`Coord`] — a 3D integer coordinate (a thin wrapper around a `glam` integer
 //!   vector) with a rich set of arithmetic, comparison, and conversion helpers.
+//! - [`LocalCoord`] — a 3D *unsigned* coordinate (a thin wrapper around a `glam`
+//!   unsigned vector) used to index a local frame of reference such as a
+//!   `NodeDim`/`NodeLevel` or a `CoordBBox`. It is a pure index; the conversion to
+//!   and from a global `Coord` is provided by `CoordBBox`/`NodeDim`.
 //! - [`CoordBBox`] — an axis-aligned bounding box built from two `Coord` corners,
-//!   with enclosing/intersect/expand operations and coordinate iterators.
+//!   with enclosing/intersect/expand operations, coordinate iterators, and
+//!   `local_to_global`/`global_to_local` conversion to a `LocalCoord`.
 //! - [`NodeDim`] / [`TreeDim`] — log-scale voxel-tree node dimensions used to index
 //!   and traverse multi-resolution sparse voxel trees.
 //!
@@ -87,7 +92,7 @@ mod config_index {
     pub type IndexVec = IVec3;
     pub type UIndexVec = UVec3;
     pub type FIndex = f64;
-    pub type FIndexVec = Vec3;
+    pub type FIndexVec = DVec3;
 }
 
 pub use config_index::*;

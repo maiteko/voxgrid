@@ -60,26 +60,19 @@ macro_rules! glam_coord_round {
 
 glam_coord_round!(Vec3, f32, DVec3, f64);
 
+#[macro_export]
 macro_rules! add_glam_int_type {
-    ($coord:ty, $($vec_type:ty, $int:ty),+) => {
+    ($coord:ty, $elem:ty, $($vec_type:ty, $int:ty),+) => {
         $(
-            impl From<$vec_type> for $coord {
-                fn from(v: $vec_type) -> Self {
-                    Self(IndexVec {
-                        x: v.x as Index,
-                        y: v.y as Index ,
-                        z: v.z as Index,
-                    })
+           impl From<$vec_type> for $coord {
+               fn from(v: $vec_type) -> Self {
+                   Self::new(v.x as $elem, v.y as $elem, v.z as $elem)
                 }
             }
 
-            impl From<&$vec_type> for $coord {
-                fn from(v: &$vec_type) -> Self {
-                    Self(IndexVec {
-                        x: v.x as Index,
-                        y: v.y as Index ,
-                        z: v.z as Index,
-                    })
+           impl From<&$vec_type> for $coord {
+               fn from(v: &$vec_type) -> Self {
+                   Self::new(v.x as $elem, v.y as $elem, v.z as $elem)
                 }
             }
 
@@ -106,6 +99,7 @@ macro_rules! add_glam_int_type {
     };
 }
 
+#[macro_export]
 macro_rules! add_glam_float_type {
     ($coord:ty, $($vec_type:ty, $float:ty),+) => {
         $(
@@ -146,8 +140,9 @@ macro_rules! add_glam_float_type {
     };
 }
 
-macro_rules! int_conversions {
-    ($coord:ty, $($int:ty),+) => {
+#[macro_export]
+macro_rules! add_int_conversions {
+    ($coord:ty, $elem:ty, $($int:ty),+) => {
          $(
              impl From<$coord> for ($int, $int, $int) {
                  fn from(value: $coord) -> Self {
@@ -163,13 +158,9 @@ macro_rules! int_conversions {
 
              impl From<($int, $int, $int)> for $coord {
                  fn from(value: ($int, $int, $int)) -> Self {
-                     Self(IndexVec {
-                         x: value.0 as Index,
-                         y: value.1 as Index,
-                         z: value.2 as Index,
-                     })
-                 }
-             }
+                      Self::new(value.0 as $elem, value.1 as $elem, value.2 as $elem)
+                   }
+               }
 
              impl From<&($int, $int, $int)> for $coord {
                  fn from(value: &($int, $int, $int)) -> Self {
@@ -179,52 +170,53 @@ macro_rules! int_conversions {
 
              impl From<[$int;3]> for $coord {
                  fn from(vec: [$int;3]) -> Self {
-                     Self::new(vec[0] as Index, vec[1] as Index, vec[2] as Index)
-                 }
-             }
+                     Self::new(vec[0] as $elem, vec[1] as $elem, vec[2] as $elem)
+                   }
+               }
 
              impl From<&[$int;3]> for $coord {
                  fn from(vec: &[$int;3]) -> Self {
-                     Self::new(vec[0] as Index, vec[1] as Index, vec[2] as Index)
-                 }
-             }
+                     Self::new(vec[0] as $elem, vec[1] as $elem, vec[2] as $elem)
+                   }
+               }
 
              impl From<$coord> for [$int;3] {
-                 fn from($coord: $coord) -> Self {
-                     [$coord.x as $int, $coord.y as $int, $coord.z as $int]
-                 }
-             }
+                 fn from(coord: $coord) -> Self {
+                      [coord.x as $int, coord.y as $int, coord.z as $int]
+                  }
+              }
 
              impl From<&$coord> for [$int;3] {
-                 fn from($coord: &$coord) -> Self {
-                     [$coord.x as $int, $coord.y as $int, $coord.z as $int]
-                 }
-             }
+                 fn from(coord: &$coord) -> Self {
+                      [coord.x as $int, coord.y as $int, coord.z as $int]
+                  }
+              }
 
              #[doc = concat!("Converts ", stringify!($int), " v into a `$coord` with values (v as Index, v as Index, v as Index)")]
              impl From<$int> for $coord {
                  fn from(v: $int) -> Self {
-                     Self::new(v as Index, v as Index, v as Index)
-                 }
-             }
+                     Self::new(v as $elem, v as $elem, v as $elem)
+                   }
+               }
          )+
     }
 }
 
+#[macro_export]
 macro_rules! int_ops {
-    ($coord:ty, $(($int:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt)),+ $(,)?) => {
-        $(
+     ($(($coord:ty, $elem:ty, $to_wide:ident, $int:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt)),+ $(,)?) => {
+         $(
             impl std::ops::$trait<[$int; 3]> for $coord {
                 type Output = Self;
 
                 fn $method(self, rhs: [$int; 3]) -> Self::Output {
-                    let x = (self.x.to_i64().unwrap() $op rhs[0].to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs[1].to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs[2].to_i64().unwrap()) as Index;
+                    let x = (self.x.$to_wide().unwrap() $op rhs[0].$to_wide().unwrap()) as $elem;
+                    let y = (self.y.$to_wide().unwrap() $op rhs[1].$to_wide().unwrap()) as $elem;
+                    let z = (self.z.$to_wide().unwrap() $op rhs[2].$to_wide().unwrap()) as $elem;
 
                     Self::new(x, y, z)
-                }
-            }
+                 }
+              }
 
             impl std::ops::$trait<&[$int]> for $coord {
                 type Output = Self;
@@ -233,82 +225,79 @@ macro_rules! int_ops {
                     let mut v = self.as_array();
 
                     for i in 0..rhs.len() {
-                        v[i] = (v[i].to_i64().unwrap() $op rhs[i].to_i64().unwrap()) as Index;
-                    }
+                        v[i] = (v[i].$to_wide().unwrap() $op rhs[i].$to_wide().unwrap()) as $elem;
+                     }
 
                     v.into()
-                }
-            }
+                 }
+              }
 
             impl std::ops::$trait<$int> for $coord {
                 type Output = Self;
 
                 fn $method(self, rhs: $int) -> Self::Output {
-                    let x = (self.x.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
+                    let x = (self.x.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
+                    let y = (self.y.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
+                    let z = (self.z.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
 
                     Self::new(x, y, z)
-                }
-            }
+                 }
+              }
 
             impl std::ops::$assign_trait<[$int; 3]> for $coord {
                 fn $assign_method(&mut self, rhs: [$int; 3]) {
-                    self.x = (self.x.to_i64().unwrap() $op rhs[0].to_i64().unwrap()) as Index;
-                    self.y = (self.y.to_i64().unwrap() $op rhs[1].to_i64().unwrap()) as Index;
-                    self.z = (self.z.to_i64().unwrap() $op rhs[2].to_i64().unwrap()) as Index;
-                }
-            }
+                    self.x = (self.x.$to_wide().unwrap() $op rhs[0].$to_wide().unwrap()) as $elem;
+                    self.y = (self.y.$to_wide().unwrap() $op rhs[1].$to_wide().unwrap()) as $elem;
+                    self.z = (self.z.$to_wide().unwrap() $op rhs[2].$to_wide().unwrap()) as $elem;
+                 }
+              }
 
             impl std::ops::$assign_trait<&[$int]> for $coord {
                 fn $assign_method(&mut self, rhs: &[$int]) {
                     let mut v = self.as_array();
 
                     for i in 0..rhs.len() {
-                        v[i] = (v[i].to_i64().unwrap() $op rhs[i].to_i64().unwrap()) as Index;
-                    }
+                        v[i] = (v[i].$to_wide().unwrap() $op rhs[i].$to_wide().unwrap()) as $elem;
+                      }
 
-                    let x = self.x $op rhs[0] as Index;
-                    let y = self.y $op rhs[1] as Index;
-                    let z = self.z $op rhs[2] as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
+                      *self = v.into()
+                  }
+              }
 
             impl std::ops::$assign_trait<$int> for $coord {
                 fn $assign_method(&mut self, rhs: $int) {
-                    let x = (self.x.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let y = (self.y.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
-                    let z = (self.z.to_i64().unwrap() $op rhs.to_i64().unwrap()) as Index;
+                    let x = (self.x.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
+                    let y = (self.y.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
+                    let z = (self.z.$to_wide().unwrap() $op rhs.$to_wide().unwrap()) as $elem;
 
-                    *self = Self::new(x, y, z)
-                }
-            }
-        )+
-    };
+                     *self = Self::new(x, y, z)
+                 }
+              }
+         )+
+     };
 }
 
+#[macro_export]
 macro_rules! add_int_ops {
-    ($coord:ty, $index:ty, $($int:ty),+) => {
-        $(
-            int_ops!(
-                ($coord, $int, Add, add, AddAssign, add_assign, +),
-                ($coord, $int, Sub, sub, SubAssign, sub_assign, -),
-                ($coord, $int, Mul, mul, MulAssign, mul_assign, *),
-                ($coord, $int, Div, div, DivAssign, div_assign, /),
-                ($coord, $int, BitAnd, bitand, BitAndAssign, bitand_assign, &),
-                ($coord, $int, BitOr, bitor, BitOrAssign, bitor_assign, |),
-                ($coord, $int, BitXor, bitxor, BitXorAssign, bitxor_assign, ^),
-                ($coord, $int, Shr, shr, ShrAssign, shr_assign, >>),
-                ($coord, $int, Shl, shl, ShlAssign, shl_assign, <<),
-            );
+     ($coord:ty, $elem:ty, $to_wide:ident, $($int:ty),+) => {
+         $(
+            crate::int_ops!(
+                  ($coord, $elem, $to_wide, $int, Add, add, AddAssign, add_assign, +),
+                  ($coord, $elem, $to_wide, $int, Sub, sub, SubAssign, sub_assign, -),
+                  ($coord, $elem, $to_wide, $int, Mul, mul, MulAssign, mul_assign, *),
+                  ($coord, $elem, $to_wide, $int, Div, div, DivAssign, div_assign, /),
+                  ($coord, $elem, $to_wide, $int, BitAnd, bitand, BitAndAssign, bitand_assign, &),
+                  ($coord, $elem, $to_wide, $int, BitOr, bitor, BitOrAssign, bitor_assign, |),
+                  ($coord, $elem, $to_wide, $int, BitXor, bitxor, BitXorAssign, bitxor_assign, ^),
+                  ($coord, $elem, $to_wide, $int, Shr, shr, ShrAssign, shr_assign, >>),
+                  ($coord, $elem, $to_wide, $int, Shl, shl, ShlAssign, shl_assign, <<),
+              );
 
             impl std::cmp::PartialEq<[$int;3]> for $coord {
                 fn eq(&self, rhs: &[$int;3]) -> bool {
-                    self.x == rhs[0] as $index && self.y == rhs[1] as $index && self.z == rhs[2] as $index
-                }
-            }
+                    self.x == rhs[0] as $elem && self.y == rhs[1] as $elem && self.z == rhs[2] as $elem
+                  }
+              }
 
             impl std::cmp::PartialOrd<[$int;3]> for $coord {
                 fn partial_cmp(&self, rhs: &[$int;3]) -> Option<std::cmp::Ordering> {
@@ -319,7 +308,8 @@ macro_rules! add_int_ops {
     };
 }
 
-macro_rules! float_conversions {
+#[macro_export]
+macro_rules! add_float_conversions {
     ($coord:ty, $($float:ty),+) => {
          $(
              impl From<$coord> for ($float, $float, $float) {
@@ -371,16 +361,16 @@ macro_rules! float_conversions {
              }
 
              impl From<$coord> for [$float;3] {
-                 fn from($coord: $coord) -> Self {
-                     [$coord.x as $float, $coord.y as $float, $coord.z as $float]
-                 }
-             }
+                 fn from(coord: $coord) -> Self {
+                      [coord.x as $float, coord.y as $float, coord.z as $float]
+                  }
+              }
 
              impl From<&$coord> for [$float;3] {
-                 fn from($coord: &$coord) -> Self {
-                     [$coord.x as $float, $coord.y as $float, $coord.z as $float]
-                 }
-             }
+                 fn from(coord: &$coord) -> Self {
+                      [coord.x as $float, coord.y as $float, coord.z as $float]
+                  }
+              }
 
              #[doc = concat!("Converts ", stringify!($float), " v floato a `$coord` with values (v as Index, v as Index, v as Index)")]
              impl From<$float> for $coord {
@@ -392,8 +382,9 @@ macro_rules! float_conversions {
     }
 }
 
+#[macro_export]
 macro_rules! float_ops {
-    ($coord:ty, $(($float:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt, $conv:ident)),+ $(,)?) => {
+    ($(($coord:ty, $float:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident, $op:tt)),+ $(,)?) => {
         $(
             impl std::ops::$trait<[$float; 3]> for $coord {
                 type Output = Self;
@@ -447,15 +438,11 @@ macro_rules! float_ops {
 
                     for i in 0..rhs.len() {
                         v[i] = round_half_up((v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap())) as Index;
-                    }
+                     }
 
-                    let x = round_half_up(self.x.to_f64() $op rhs[0]) as Index;
-                    let y = round_half_up(self.y.to_f64() $op rhs[1]) as Index;
-                    let z = round_half_up(self.z.to_f64() $op rhs[2]) as Index;
-
-                    *self = Self::new(x, y, z)
-                }
-            }
+                     *self = v.into()
+                 }
+             }
 
             impl std::ops::$assign_trait<$float> for $coord {
                 fn $assign_method(&mut self, rhs: $float) {
@@ -470,10 +457,11 @@ macro_rules! float_ops {
     };
 }
 
+#[macro_export]
 macro_rules! add_float_ops {
-    ($coord:ty, $($float:ty),+) => {
-        $(
-            float_ops!(
+     ($coord:ty, $($float:ty),+) => {
+         $(
+            crate::float_ops!(
                 ($coord, $float, Add, add, AddAssign, add_assign, +),
                 ($coord, $float, Sub, sub, SubAssign, sub_assign, -),
                 ($coord, $float, Mul, mul, MulAssign, mul_assign, *),
