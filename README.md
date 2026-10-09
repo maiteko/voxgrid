@@ -25,7 +25,7 @@ Because it is a pure index, `LocalCoord` does not convert to or from floating-po
 
 ## CoordBBox
 
-It is also based on the OpenVDB type of the same name, providing a two-point, axis-aligned bounding box. It provides tools for expanding, enclosing, checking overlaps, and converting between global and bbox local coordinates via `local_to_global`/`global_to_local`, which return a `Result` and error when the coordinate lies outside the box's range.
+`CoordBBox` is also based on the OpenVDB type of the same name, providing a two-point, axis-aligned bounding box. It provides tools for expanding, enclosing, checking overlaps, and converting between global and bbox local coordinates via `local_to_global`/`global_to_local`, which return a `Result` and error when the coordinate lies outside the box's range.
 
 ## TreeDim
 
@@ -66,28 +66,82 @@ game engines/voxel libraries. i64 indexes (i64, I64Vec3, U64Vec3, DVec3) can be 
 
 ## Examples
 
-```rust
-use voxgrid::*;
+### `Coord` & `LocalCoord`
 
+```rust
+use voxgrid::{Coord, LocalCoord};
+
+// Coord is a signed 3D integer coordinate (i32 by default, i64 under the
+// `index64` feature) that derefs to a glam integer vector.
 let a = Coord::new(1, 2, 3);
 let b = Coord::new(4, 5, 6);
-
 assert_eq!(a + b, Coord::new(5, 7, 9));
 assert_eq!(b - a, Coord::new(3, 3, 3));
 assert_eq!(-a, Coord::new(-1, -2, -3));
 
-let mut bbox = CoordBBox::new(a, b);
+// Floats convert through round_half_up, which snaps .5 away from zero so the
+// grid stays consistent around the origin.
+assert_eq!(Coord::from([0.5_f64, 0.5, 0.5]), Coord::new(1, 1, 1));
+assert_eq!(Coord::from([-0.5_f64, -0.5, -0.5]), Coord::ORIGIN);
 
-bbox.enclose_point(&Coord::ORIGIN);
-assert_eq!(bbox, CoordBBox::new(Coord::ORIGIN, b));
+// LocalCoord is the unsigned index version. It carries no meaning on its own; it
+// only addresses a local frame (a CoordBBox or NodeLevel), so it never converts
+// to or from floating-point types.
+let local = LocalCoord::new(1, 2, 3).offset_by(4, 5, 6);
+assert_eq!(local, LocalCoord::new(5, 7, 9));
+```
 
+### `CoordBBox`
 
-const TREE_DIM: TreeDim<8> = TreeDim::octree();
-// Root's voxel length is the entire index space, positive and negative
-assert_eq!(TREE_DIM.root().voxel_length, UIndex::MAX as usize);
-// octree sets all child nodes up to 1, with tree_depth == MAX_DEPTH
-// This means the first child is an octree with axis voxel length of 2^7
-assert_eq!(TREE_DIM.child(TREE_DIM.root()).voxel_length, 128);
+```rust
+use voxgrid::{Coord, CoordBBox, LocalCoord};
+
+// A two-corner, inclusive, axis-aligned bounding box.
+let bbox = CoordBBox::new(Coord::new(-10, -5, 0), Coord::new(10, 5, 10));
+assert_eq!(bbox.volume(), 21 * 11 * 11);
+assert!(bbox.coord_is_inside(&Coord::new(0, 0, 0)));
+
+// Enclosing grows the box to include a point.
+let mut grown = CoordBBox::new(Coord::ORIGIN, Coord::new(4, 4, 4));
+grown.enclose_point(&Coord::new(-3, -3, -3));
+assert_eq!(grown.min, Coord::new(-3, -3, -3));
+
+// global <-> local conversion is relative to the box's origin; it errors when
+// the coordinate lies outside the box.
+let local = bbox.global_to_local(&Coord::new(0, 0, 0)).unwrap();
+assert_eq!(local, LocalCoord::new(10, 5, 0));
+assert_eq!(bbox.local_to_global(&LocalCoord::ORIGIN).unwrap(), bbox.min);
+assert!(bbox.global_to_local(&Coord::new(11, 0, 0)).is_err());
+```
+
+### `TreeDim` & `NodeLevel`
+
+```rust
+use voxgrid::{TreeDim, UIndex};
+
+// TreeDim::octree() builds a uniform 2x2x2 sparse tree over MAX_DEPTH levels.
+let tree: TreeDim = TreeDim::octree();
+
+// The root is sparse, so its voxel length is the entire index space.
+assert!(tree.root().is_sparse);
+assert_eq!(tree.root().voxel_length, UIndex::MAX as usize);
+
+// first_child is the top non-root level; its voxel length is 2^7 = 128.
+assert_eq!(tree.first_child().voxel_length, 128);
+
+// A NodeLevel derefs to its NodeDim and can walk the tree down to the leaf.
+let mut node = tree.root();
+while let Some(child) = node.child() {
+    node = child;
+}
+assert_eq!(node, tree.leaf());
+assert!(node.is_leaf);
+assert_eq!(node.voxel_length, 2);
+
+// A custom tree is built from each level's log2 child size.
+let custom = TreeDim::<4>::new(&[2, 3, 4]);
+assert_eq!(custom.leaf().voxel_length, 4); // 2^2 leaf
+assert_eq!(custom.root().node_level, 3);
 ```
 
 ## Building & testing
