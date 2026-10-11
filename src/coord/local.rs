@@ -85,10 +85,6 @@ impl LocalCoord {
     }
 
     pub fn from_int<T: Integer + NumCast>(v: T) -> Self {
-        #[cfg(feature = "index64")]
-        let v = v.to_u64().unwrap();
-
-        #[cfg(not(feature = "index64"))]
         let v = v.to_u32().unwrap();
 
         Self::new(v, v, v)

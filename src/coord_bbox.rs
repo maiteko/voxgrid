@@ -24,6 +24,28 @@ use serde::{Deserialize, Serialize};
 /// `Coord::MIN`), which is convenient as an accumulator: call
 /// [`CoordBBox::enclose_point`] / [`CoordBBox::enclose_bbox`] to grow it from
 /// nothing. An empty box reports `empty() == true` and `volume() == 0`.
+///
+/// Global↔local conversion is relative to the box's `min` corner and returns a
+/// [`Result`], erroring when the coordinate lies outside the box:
+///
+/// ```
+/// use voxgrid::{Coord, CoordBBox, LocalCoord};
+///
+/// // A two-corner, inclusive, axis-aligned bounding box.
+/// let bbox = CoordBBox::new(Coord::new(-10, -5, 0), Coord::new(10, 5, 10));
+/// assert_eq!(bbox.volume(), 21 * 11 * 11);
+/// assert!(bbox.coord_is_inside(&Coord::new(0, 0, 0)));
+///
+/// // Enclosing grows the box to include a point.
+/// let mut grown = CoordBBox::new(Coord::ORIGIN, Coord::new(4, 4, 4));
+/// grown.enclose_point(&Coord::new(-3, -3, -3));
+/// assert_eq!(grown.min, Coord::new(-3, -3, -3));
+///
+/// let local = bbox.global_to_local(&Coord::new(0, 0, 0)).unwrap();
+/// assert_eq!(local, LocalCoord::new(10, 5, 0));
+/// assert_eq!(bbox.local_to_global(&LocalCoord::ORIGIN).unwrap(), bbox.min);
+/// assert!(bbox.global_to_local(&Coord::new(11, 0, 0)).is_err());
+/// ```
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "bytemuck", derive(Zeroable, Pod))]

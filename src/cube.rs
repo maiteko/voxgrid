@@ -41,6 +41,8 @@
 //! o----0----o
 //! </pre>
 
+#![doc = include_str!("../docs/cube_tables.md")]
+
 use crate::Coord;
 use glam::{U8Vec2, Vec3};
 use lazy_static::lazy_static;

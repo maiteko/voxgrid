@@ -13,9 +13,9 @@
 //!   child/voxel buffers.
 //! - [`TreeDim`] chains `MAX_DEPTH` `NodeDim` levels and provides the parent/child
 //!   navigation, child-coordinate enumeration, and overlap queries used to
-//!   traverse the tree. Levels are stored **root-first**: the root is at index
-//!    0 and the leaf at the highest used index (`node_dims[tree_depth -
-//!    node_level]`).
+//!   traverse the tree. Levels are stored **root-first**: the root is at
+//!   `node_dims[0]` and the leaf at the highest used index, `node_dims[tree_depth
+//!   - 1]` (the array is indexed by `tree_depth - node_level`).
 //!
 //! Sparse trees (built with [`NodeDim::sparse`] / [`TreeDim::octree`])
 //! have no fixed node bounds: `node_origin`, `voxel_bbox`, and `local_bbox`
@@ -34,6 +34,37 @@ use super::*;
 /// (`node_level == 1`). Build a tree from the log2 child size of each level with
 /// [`TreeDim::new`], or use the [`TreeDim::octree`] helper for a uniform 2x2x2
 /// split at every level (a sparse octree, child dim 1).
+///
+/// A [`NodeLevel`] derefs to its [`NodeDim`] and can walk the tree down to the
+/// leaf via [`NodeLevel::child`]:
+///
+/// ```
+/// use voxgrid::{TreeDim, UIndex};
+///
+/// // TreeDim::octree() builds a uniform 2x2x2 sparse tree over MAX_DEPTH levels.
+/// let tree: TreeDim = TreeDim::octree();
+///
+/// // The root is sparse, so its voxel length is the entire index space.
+/// assert!(tree.root().is_sparse);
+/// assert_eq!(tree.root().voxel_length, UIndex::MAX as usize + 1);
+///
+/// // region is the top non-root level; its voxel length is 2^7 = 128.
+/// assert_eq!(tree.region().voxel_length, 128);
+///
+/// // Walk from the root down to the leaf.
+/// let mut node = tree.root();
+/// while let Some(child) = node.child() {
+///     node = child;
+/// }
+/// assert_eq!(node, tree.leaf());
+/// assert!(node.is_leaf);
+/// assert_eq!(node.voxel_length, 2);
+///
+/// // A custom tree is built from each level's log2 child size (first-child to leaf).
+/// let custom = TreeDim::<4>::new(&[3, 2]);
+/// assert_eq!(custom.leaf().voxel_length, 4); // 2^2 leaf
+/// assert_eq!(custom.root().node_level, 3);
+/// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TreeDim<const MAX_DEPTH: usize = 8> {
     /// Index zero is the root level; the leaf is at index `tree_depth - 1`.
@@ -42,39 +73,38 @@ pub struct TreeDim<const MAX_DEPTH: usize = 8> {
 }
 
 impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
-    /// Build a [`TreeDim`] level by level from each level's log2 child size.
+    /// Build a [`TreeDim`] from each non-root level's log2 child size, ordered
+    /// first-child (largest) to leaf (smallest), matching OpenVDB. `child_log_dims[0]`
+    /// is the level just below the root; the last entry is the leaf.
     ///
-    /// `child_log_dims[k]` gives the log2 child size of the node at `node_level`
-    /// `k + 1`; the levels are stored root-first, with the leaf at the highest
-    /// used index. The root (top level) is created implicitly with a `log_dim`
-    /// of `63 - child_sum`, so the tree spans the full coordinate range. The
-    /// depth is capped at `MAX_DEPTH`, so any `child_log_dims` past it are
-    /// ignored.
+    /// The levels are stored root-first (`node_dims[0]` is the root, the leaf at
+    /// the highest used index). The root is created implicitly with a `log_dim` of
+    /// `63 - child_sum`, so the tree spans the full coordinate range. `tree_depth`
+    /// is the input length plus the implicit root, capped at `MAX_DEPTH`, so any
+    /// entries beyond that are dropped.
     ///
     /// ```
     /// use voxgrid::TreeDim;
     ///
     /// // leaf log_dim 2 (4x4x4 voxels), one intermediate level, then a root.
-    /// let tree = TreeDim::<4>::new(&[2, 3, 4]);
+    /// let tree = TreeDim::<4>::new(&[3, 2]);
     /// assert_eq!(tree.leaf().log_dim, 2);
     /// assert_eq!(tree.root().node_level, 3);
     /// assert!(tree.root().is_sparse);
     /// ```
     pub const fn new(child_log_dims: &[u8]) -> Self {
         let mut node_dims = [NodeDim::no_child(0); MAX_DEPTH];
-
+        let mut tree_depth = child_log_dims.len() + 1;
         // min is not currently supported in const contexts
-        let tree_depth = if child_log_dims.len() > MAX_DEPTH {
-            MAX_DEPTH
-        } else {
-            child_log_dims.len()
+        if tree_depth > MAX_DEPTH {
+            tree_depth = MAX_DEPTH;
         };
 
         let mut child_sum = 0;
         let mut node_level = 1;
 
         while node_level < tree_depth {
-            let log_dim = child_log_dims[node_level - 1];
+            let log_dim = child_log_dims[(tree_depth - node_level) - 1];
 
             node_dims[tree_depth - node_level] =
                 NodeDim::new(log_dim, child_sum, node_level as u8, false);
@@ -83,7 +113,12 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
             node_level += 1;
         }
 
-        node_dims[0] = NodeDim::new(63 - child_sum, child_sum, tree_depth as u8, true);
+        node_dims[0] = NodeDim::new(
+            (UIndex::BITS - 1) as u8 - child_sum,
+            child_sum,
+            tree_depth as u8,
+            true,
+        );
 
         Self {
             node_dims,
@@ -156,20 +191,22 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
     }
 
     #[inline]
-    /// The leaf level (`node_dims[tree_depth - 1]`).
+    /// The leaf level (`node_dims[tree_depth - 1]`), i.e. the deepest level
+    /// where `node_level == 1`.
     pub const fn leaf<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(1)
     }
 
     #[inline]
-    /// The root level (`node_dims[0]`).
+    /// The root level (`node_dims[0]`), the top level where `node_level == tree_depth`.
     pub const fn root<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(self.tree_depth)
     }
 
     #[inline]
-    /// The first child level of the root (`node_level == tree_depth - 1`).
-    pub const fn first_child<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
+    /// The first child of the root (`node_level == tree_depth - 1`), i.e. the
+    /// highest level locally indexed node
+    pub const fn region<'a>(&'a self) -> NodeLevel<'a, MAX_DEPTH> {
         self.node_level(self.tree_depth - 1)
     }
 
@@ -241,8 +278,15 @@ impl NodeDim {
         let total_dim = log_dim + sum_child_dims;
 
         let (child_length, voxel_length) = if is_sparse {
-            let voxel_length = UIndex::MAX as usize;
-            let child_length = voxel_length / (1_usize << sum_child_dims);
+            let voxel_length = UIndex::MAX as usize + 1;
+
+            let child_length = match sum_child_dims {
+                0 => voxel_length as usize,
+                // since we can't get the actual voxel_length (off by one)
+                // we add one after division
+                _ => voxel_length / (1 << sum_child_dims),
+            };
+
             (child_length, voxel_length)
         } else {
             let child_length = 1_usize << log_dim as usize;
@@ -262,6 +306,8 @@ impl NodeDim {
             coord_dim_mask,
             is_sparse,
             is_leaf: node_level == 1,
+            // The cube of voxel_length/child_length size is _far_ outside the u64 range
+            // This is fine, root is intended to be sparse (ie. represented by a map)
             voxel_buffer_size: if is_sparse { 0 } else { voxel_length.pow(3) },
             child_buffer_size: if is_sparse { 0 } else { child_length.pow(3) },
         }
@@ -340,7 +386,12 @@ impl NodeDim {
     }
 
     /// Fill a `Vec<T>` of `child_length^3` elements, each produced by `f`.
+    /// Returns an empty Vec<T> if called from a sparse node
     pub fn make_child_buffer<T, F: FnMut() -> T>(&self, f: &mut F) -> Vec<T> {
+        if self.is_sparse {
+            return Vec::new();
+        }
+
         let size = self.child_length.pow(3);
         let mut result = Vec::with_capacity(size);
         result.resize_with(size, f);
@@ -348,15 +399,20 @@ impl NodeDim {
     }
 
     /// Fill a `Vec<T>` of `voxel_length^3` elements, each produced by `f`.
+    /// Returns an empty Vec<T> if called from a sparse node
     pub fn make_voxel_buffer<T, F: FnMut() -> T>(&self, f: &mut F) -> Vec<T> {
+        if self.is_sparse {
+            return Vec::new();
+        }
+
         let size = self.voxel_length.pow(3);
         let mut result = Vec::with_capacity(size);
         result.resize_with(size, f);
         result
     }
 
-    /// The child-level local coordinate of `pos`: shifted right by `sum_child_dims`
-    /// and masked by `coord_dim_mask`.
+    /// returns local coordinates of the child containing the given pos within
+    /// the current node level.
     pub fn global_to_local_child(&self, pos: &Coord) -> LocalCoord {
         let pos = UIndexVec::from(pos);
         let shifted = pos >> self.sum_child_dims;
@@ -365,7 +421,8 @@ impl NodeDim {
         (shifted & mask).into()
     }
 
-    /// The voxel-level local coordinate of `pos`, masked to `voxel_length - 1`.
+    /// Gets the LocalCoord of the voxel at the given pos within
+    /// the current node level
     pub fn global_to_local_voxel(&self, pos: &Coord) -> LocalCoord {
         let pos = UIndexVec::from(pos);
         let mask = (self.voxel_length - 1) as UIndex;
@@ -375,6 +432,10 @@ impl NodeDim {
 
     /// Call `f` with the node origin of each of the six face-adjacent nodes of `pos`.
     pub fn for_each_face_neighbor(&self, pos: &Coord, mut f: impl FnMut(&Coord)) {
+        if self.is_sparse {
+            // a sparse node has no neighbors
+            return;
+        }
         use crate::cube::SIDE_NORMALS;
 
         let voxel_length = self.voxel_length as Index;
@@ -747,21 +808,23 @@ mod tests {
 
     #[test]
     fn test_new_layout_three_levels() {
-        let tree = TreeDim::<4>::new(&[2, 3, 4]);
+        // Input is ordered first-child (largest) to leaf (smallest); tree_depth
+        // is the input length plus the implicit root.
+        let tree = TreeDim::<4>::new(&[3, 2]);
         assert_eq!(tree.tree_depth, 3);
 
         let root = tree.root();
         let leaf = tree.leaf();
         assert_eq!(root.node_level, 3);
         assert!(root.is_sparse);
-        assert_eq!(root.log_dim, 58); // 63 - child_sum (2 + 3)
+        assert_eq!(root.log_dim, (UIndex::BITS as u8 - 1) - 5); // 63 - child_sum (3 + 2)
         assert_eq!(root.sum_child_dims, 5);
-        assert_eq!(root.total_dim, 63);
+        assert_eq!(root.total_dim, (UIndex::BITS as u8 - 1));
 
         assert_eq!(leaf.node_level, 1);
         assert!(leaf.is_leaf);
         assert!(!leaf.is_sparse);
-        assert_eq!(leaf.log_dim, 2); // child_log_dims[0]
+        assert_eq!(leaf.log_dim, 2); // leaf is the last input entry
         assert_eq!(leaf.sum_child_dims, 0);
         assert_eq!(leaf.voxel_length, 4);
         let child = root.child().unwrap();
@@ -775,7 +838,7 @@ mod tests {
 
     #[test]
     fn test_new_caps_depth_at_max_depth() {
-        // More entries than MAX_DEPTH: the extras are ignored.
+        // More entries than MAX_DEPTH: the extras are dropped.
         let tree = TreeDim::<2>::new(&[2, 3, 4, 5]);
         assert_eq!(tree.tree_depth, 2);
         assert_eq!(tree.leaf().log_dim, 2); // only child_log_dims[0] is used
@@ -793,7 +856,7 @@ mod tests {
         assert_eq!(leaf.node_level, 1);
         assert!(leaf.is_leaf);
         assert!(root.is_sparse);
-        assert_eq!(root.log_dim, 56); // 63 - 7 non-root levels
+        assert_eq!(root.log_dim, (UIndex::BITS as u8 - 1) - 7); // 63 - 7 non-root levels
         assert_eq!(leaf.voxel_length, 2);
 
         // Every level 1..=8 is addressable; 0 and 9 are out of range.
@@ -816,11 +879,12 @@ mod tests {
 
     #[test]
     fn test_get_node_level_size_bounds() {
-        let tree = TreeDim::<3>::new(&[2, 3]); // tree_depth 2
+        let tree = TreeDim::<3>::new(&[2, 3]); // tree_depth 3 (input length + root)
         assert!(tree.get_node_level_size(0).is_none());
-        assert!(tree.get_node_level_size(3).is_none()); // 3 > tree_depth
+        assert!(tree.get_node_level_size(4).is_none()); // 4 > tree_depth
         assert!(tree.get_node_level_size(1).is_some());
         assert!(tree.get_node_level_size(2).is_some());
+        assert!(tree.get_node_level_size(3).is_some()); // root
     }
 
     #[test]
@@ -836,7 +900,7 @@ mod tests {
 
     #[test]
     fn test_child_parent_round_trip() {
-        let tree = TreeDim::<4>::new(&[2, 3, 4]); // levels 1..=3
+        let tree = TreeDim::<4>::new(&[2, 3, 4]); // tree_depth 5, levels 1..=5
         let l2 = tree.get_node_level(2).unwrap();
         assert_eq!(l2.child(), tree.get_node_level(1));
         assert_eq!(l2.parent(), tree.get_node_level(3));
@@ -853,10 +917,10 @@ mod tests {
     #[test]
     #[should_panic(expected = "node level out of range")]
     fn test_node_level_size_above_tree_depth_panics() {
-        // tree_depth is 2 but MAX_DEPTH is 3; level 3 must panic instead of
+        // tree_depth is 3 (input length + root); level 4 must panic instead of
         // underflowing the index `tree_depth - node_level`.
         let tree = TreeDim::<3>::new(&[2, 3]);
-        let _ = tree.node_level_size(3);
+        let _ = tree.node_level_size(4);
     }
 
     #[test]
