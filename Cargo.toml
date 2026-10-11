@@ -13,6 +13,8 @@ categories = ["data-structures", "mathematics", "game-development"]
 [features]
 serde = ["dep:serde","glam/serde", "half/serde"]
 bytemuck = ["dep:bytemuck","glam/bytemuck"]
+quantized = []
+voxgrid = []
 
 [dependencies]
 anyhow = "1.0.104"
