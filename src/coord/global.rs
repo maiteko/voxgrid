@@ -63,14 +63,21 @@ pub use crate::*;
 ///
 /// `Coord` wraps a `glam` integer vector (`IndexVec`) and implements `Deref`/
 /// `DerefMut`, so the underlying `.x`, `.y`, `.z` fields and `glam` vector
-/// operations are usable directly. The element type is `i32` by default and
-/// `i64` under the `index64` feature.
+/// operations are usable directly.
 ///
 /// ```
 /// use voxgrid::Coord;
 ///
-/// let p = Coord::new(1, 2, 3).offset_by(4, 5, 6);
-/// assert_eq!(p, Coord::new(5, 7, 9));
+/// let a = Coord::new(1, 2, 3);
+/// let b = Coord::new(4, 5, 6);
+/// assert_eq!(a + b, Coord::new(5, 7, 9));
+/// assert_eq!(b - a, Coord::new(3, 3, 3));
+/// assert_eq!(-a, Coord::new(-1, -2, -3));
+///
+/// // Floats convert through `round_half_up`, snapping `.5` up to the nearest integer so the
+/// // grid stays consistent around the origin.
+/// assert_eq!(Coord::from([0.5_f64, 0.5, 0.5]), Coord::new(1, 1, 1));
+/// assert_eq!(Coord::from([-0.5_f64, -0.5, -0.5]), Coord::ORIGIN);
 /// ```
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -114,10 +121,6 @@ impl Coord {
     }
 
     pub fn from_int<T: Integer + NumCast>(v: T) -> Self {
-        #[cfg(feature = "index64")]
-        let v = v.to_i64().unwrap();
-
-        #[cfg(not(feature = "index64"))]
         let v = v.to_i32().unwrap();
 
         Self::new(v, v, v)
@@ -125,10 +128,6 @@ impl Coord {
 
     pub fn from_float<T: Real + NumCast>(v: T) -> Self {
         let v = round_half_up(v);
-        #[cfg(feature = "index64")]
-        let v = v.to_i64().unwrap();
-
-        #[cfg(not(feature = "index64"))]
         let v = v.to_i32().unwrap();
 
         Self::new(v, v, v)

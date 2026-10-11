@@ -1,62 +1,4 @@
-//! # voxgrid
-//!
-//! Coordinate and bounding-box math for voxel grids and log-scaled voxel trees,
-//! aimed at Godot / Voxelis-style engines.
-//!
-//! The crate provides three layers of abstractions:
-//!
-//! - [`Coord`] — a 3D integer coordinate (a thin wrapper around a `glam` integer
-//!   vector) with a rich set of arithmetic, comparison, and conversion helpers.
-//! - [`LocalCoord`] — a 3D *unsigned* coordinate (a thin wrapper around a `glam`
-//!   unsigned vector) used to index a local frame of reference such as a
-//!   `NodeDim`/`NodeLevel` or a `CoordBBox`. It is a pure index; the conversion to
-//!   and from a global `Coord` is provided by `CoordBBox`/`NodeDim`.
-//! - [`CoordBBox`] — an axis-aligned bounding box built from two `Coord` corners,
-//!   with enclosing/intersect/expand operations, coordinate iterators, and
-//!   `local_to_global`/`global_to_local` conversion to a `LocalCoord`.
-//! - [`NodeDim`] / [`TreeDim`] — log-scale voxel-tree node dimensions used to index
-//!   and traverse multi-resolution sparse voxel trees.
-//!
-//! The [`cube`] module gathers the static lookup tables (edges, corners, normals,
-//! neighborhoods, side normals) that voxel and mesh-generation code relies on.
-//!
-//! ## Index type
-//!
-//! By default coordinates use `i32`, matching both Voxelis and Godot. Enable the
-//! `index64` feature to switch the whole crate to `i64`. See the crate features in
-//! `Cargo.toml`.
-//!
-//! ## Feature flags
-//!
-//! - `index64` — use `i64`/`u64` coordinates instead of `i32`/`u32`.
-//! - `serde` — derive `Serialize`/`Deserialize` for the public types.
-//! - `bytemuck` — derive `Pod`/`Zeroable` and enable byte-slice conversions.
-//!
-//! ```rust
-//! use voxgrid::*;
-//!
-//! let a = Coord::new(1, 2, 3);
-//! let b = Coord::new(4, 5, 6);
-//!
-//! assert_eq!(a + b, Coord::new(5, 7, 9));
-//! assert_eq!(b - a, Coord::new(3, 3, 3));
-//! assert_eq!(-a, Coord::new(-1, -2, -3));
-//!
-//! let mut bbox = CoordBBox::new(a, b);
-//!
-//! bbox.enclose_point(&Coord::ORIGIN);
-//! assert_eq!(bbox, CoordBBox::new(Coord::ORIGIN, b));
-//!
-//!
-//! const TREE_DIM: TreeDim<8> = TreeDim::octree();
-//! // Roots voxel length is the entire index space, positive and negative
-//! assert_eq!(TREE_DIM.root().voxel_length, UIndex::MAX as usize);
-//!
-//! // TreeDim::octree() sets all child nodes up to 1, with tree_depth == MAX_DEPTH
-//! // This means the first child is a octree with axis voxel length of 2^7
-//! assert_eq!(TREE_DIM.root().child().unwrap().voxel_length, 128);
-//! assert_eq!(TREE_DIM.root().child_length, (UIndex::MAX / 128) as usize)
-//! ```
+#![doc = include_str!("../README.md")]
 
 mod coord;
 mod coord_bbox;
@@ -70,19 +12,6 @@ pub use coord_bbox::CoordBBox;
 pub use tree_dim::*;
 pub use vox_grid::*;
 
-#[cfg(feature = "index64")]
-mod config_index {
-    /// 64-bit index configuration, enabled by the `index64` feature.
-    use glam::*;
-    pub type Index = i64;
-    pub type UIndex = u64;
-    pub type IndexVec = I64Vec3;
-    pub type UIndexVec = U64Vec3;
-    pub type FIndex = f64;
-    pub type FIndexVec = DVec3;
-}
-
-#[cfg(not(feature = "index64"))]
 mod config_index {
     /// 32-bit index configuration used by default, because Voxelis and Godot both
     /// use `i32` as their base integer type.
