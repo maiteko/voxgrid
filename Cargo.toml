@@ -11,7 +11,7 @@ keywords = ["voxel", "octree", "coordinate", "bounding-box", "godot"]
 categories = ["data-structures", "mathematics", "game-development"]
 
 [features]
-default = ["quantized", "voxelis"]
+default = []
 serde = ["dep:serde","glam/serde", "half/serde"]
 bytemuck = ["dep:bytemuck","glam/bytemuck"]
 quantized = []
