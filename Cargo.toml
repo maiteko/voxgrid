@@ -11,10 +11,12 @@ keywords = ["voxel", "octree", "coordinate", "bounding-box", "godot"]
 categories = ["data-structures", "mathematics", "game-development"]
 
 [features]
+default = ["quantized", "voxelis"]
 serde = ["dep:serde","glam/serde", "half/serde"]
 bytemuck = ["dep:bytemuck","glam/bytemuck"]
 quantized = []
 voxgrid = []
+voxelis = ["dep:voxelis"]
 
 [dependencies]
 anyhow = "1.0.104"
@@ -26,4 +28,6 @@ lazy_static = "1.5.1"
 num = "0.4.3"
 num-traits = "0.2.19"
 num_enum = "0.7.6"
+paste = "1.0.15"
 serde = { version = "1.0.229", features = ["derive"], optional = true }
+voxelis = { version = "25.4.0", optional = true }
