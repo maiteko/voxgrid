@@ -177,21 +177,23 @@ impl CoordBBox {
     }
 
     /// Return `max - min + 1` per axis, or zero on every axis when empty.
-
-    pub fn axis_dims(&self) -> Coord {
+    pub fn axis_dims(&self) -> [usize; 3] {
         if self.empty() {
-            Coord::new(0, 0, 0)
+            [0; 3]
         } else {
-            (self.max - self.min).single_offset_by(1)
+            [
+                (self.max.x as i64 - self.min.x as i64 + 1) as usize,
+                (self.max.y as i64 - self.min.y as i64 + 1) as usize,
+                (self.max.z as i64 - self.min.z as i64 + 1) as usize,
+            ]
         }
     }
 
     /// Return the number of spanned coordinates, the product of
     /// [`CoordBBox::axis_dims`] (zero when empty).
-
     pub fn volume(&self) -> usize {
         let d = self.axis_dims();
-        d.x as usize * d.y as usize * d.z as usize
+        d[0] * d[1] * d[2]
     }
 
     /// Return whether the box has positive extent on some axis and can be split
@@ -204,13 +206,25 @@ impl CoordBBox {
     /// Return the axis index (0 = `x`, 1 = `y`, 2 = `z`) of the smallest dimension.
 
     pub fn min_extent(&self) -> usize {
-        self.axis_dims().min_idx()
+        self.axis_dims()
+            .iter()
+            .cloned()
+            .enumerate()
+            .min_by_key(|x| x.1)
+            .unwrap()
+            .0
     }
 
     /// Return the axis index (0 = `x`, 1 = `y`, 2 = `z`) of the largest dimension.
 
     pub fn max_extent(&self) -> usize {
-        self.axis_dims().max_idx()
+        self.axis_dims()
+            .iter()
+            .cloned()
+            .enumerate()
+            .max_by_key(|x| x.1)
+            .unwrap()
+            .0
     }
 
     /// Return whether `xyz` lies inside the box, inclusive of the boundary.
@@ -779,13 +793,13 @@ mod test {
         let bbox = CoordBBox::new(Coord::new(0, 0, 0), Coord::new(10, 10, 10));
         let dim = bbox.axis_dims();
 
-        assert_eq!(dim.x, 11); // max - min + 1 = 11
-        assert_eq!(dim.y, 11);
-        assert_eq!(dim.z, 11);
+        assert_eq!(dim[0], 11); // max - min + 1 = 11
+        assert_eq!(dim[1], 11);
+        assert_eq!(dim[2], 11);
 
         // Empty bbox
         let empty = CoordBBox::default();
-        assert_eq!(empty.axis_dims(), Coord::new(0, 0, 0));
+        assert_eq!(empty.axis_dims(), [0; 3]);
     }
 
     #[test]

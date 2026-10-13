@@ -559,7 +559,13 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         let bbox = self.enclose_children(*bbox);
         let child_stride = self.child_stride();
 
-        let [x, y, z]: [usize; 3] = (bbox.axis_dims() / child_stride).into();
+        let [x, y, z]: [usize; 3] = bbox
+            .axis_dims()
+            .iter()
+            .map(|v| v / child_stride)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
 
         x * y * z
     }
