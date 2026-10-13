@@ -13,50 +13,50 @@
 //!    operations
 //!
 //! NaN values are rejected with an Err. +/- infinity are converted to i32::MIN/MAX.
-use anyhow::{Result, bail};
-use half::f16;
-use num_traits::{Float, PrimInt};
-use num_traits::{FromPrimitive, NumCast, ToPrimitive};
-use paste::paste;
-use std::fmt::Display;
 use std::{
+    fmt::{self, Debug, Display},
     hash::{Hash, Hasher},
     marker::PhantomData,
-    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, RemAssign, Sub, SubAssign},
 };
 
-/// Defines how a floating-point type is encoded in and decoded from
-/// an integer storage type.
+use anyhow::{Result, bail};
+use half::f16;
+use num_traits::{
+    Float, FromPrimitive, Num, NumCast, One, Pow, PrimInt, Signed, ToPrimitive, Zero,
+};
+
+const SCALE: f64 = 1024.0;
+
+/// Representation policy for a quantized float/storage pair.
 ///
-/// Implementations determine the supported distance range, sentinel
-/// behavior, and conversion details for a particular float/storage pair.
+/// The storage minimum and maximum are reserved for negative and positive
+/// infinity. Implementations must keep ordinary encoded values away from
+/// those codes.
 pub trait QuantizedRepr<F, I>
 where
     F: Float,
     I: PrimInt,
 {
-    /// Encodes a float value.
-    ///
-    /// Implementations should reject non-finite values and must ensure
-    /// ordinary encoded values do not collide with any reserved sentinel
-    /// codes.
+    /// Largest supported absolute input value. Inputs at or beyond this
+    /// limit are rejected.
+    const LIMIT: f64;
+
+    /// Largest supported absolute storage code for ordinary values.
+    const SCALED_LIMIT: I;
+
+    /// Encodes a finite value. Implementations must reject values that cannot
+    /// be represented and must not return either reserved sentinel code.
     fn encode(value: F) -> Result<I>;
 
-    /// Decodes an integer code to a float value.
+    /// Decodes a storage code. The reserved minimum and maximum codes
+    /// represent negative and positive infinity.
     fn decode(value: I) -> F;
-
-    /// Clamps a storage code to the reserved MIN/MAX sentinel when it is
-    /// outside the representable distance range, so that out-of-range values
-    /// collapse to a single tileable value instead of a distinct code each.
-    fn clamp_to_sentinel(value: I) -> I;
 }
 
 /// A floating-point value stored as a hashable integer code.
 ///
-/// `F` is the float type exposed by the representation, and `I` is its
-/// integer storage type. The actual representation policy is supplied by
-/// a [`QuantizedRepr`] implementation.
-///
+/// The representation policy is supplied by a [`QuantizedRepr`] implementation.
 /// The default resolution in the implementations below is `1 / 1024`.
 pub struct Quantized<F, I>
 where
@@ -67,36 +67,79 @@ where
     _float: PhantomData<F>,
 }
 
+impl<F, I> Quantized<F, I>
+where
+    F: Float,
+    I: PrimInt,
+    Self: QuantizedRepr<F, I>,
+{
+    /// Encodes `value` using this type's representation.
+    pub fn from_float(value: F) -> Result<Self> {
+        Ok(Self::from_raw(<Self as QuantizedRepr<F, I>>::encode(
+            value,
+        )?))
+    }
+
+    /// Decodes this value using this type's representation.
+    pub fn into_float(self) -> F {
+        <Self as QuantizedRepr<F, I>>::decode(self.value)
+    }
+
+    /// Returns the stored integer code.
+    pub fn raw(&self) -> &I {
+        &self.value
+    }
+
+    fn from_raw(value: I) -> Self {
+        Self {
+            value,
+            _float: PhantomData,
+        }
+    }
+
+    fn from_result(value: F) -> Self {
+        Self::from_float(value).expect("result is not representable as Quantized")
+    }
+
+    fn map(self, f: impl FnOnce(F) -> F) -> Self {
+        Self::from_result(f(self.into_float()))
+    }
+
+    fn zip(self, other: Self, f: impl FnOnce(F, F) -> F) -> Self {
+        Self::from_result(f(self.into_float(), other.into_float()))
+    }
+}
+
 impl<F, I> Display for Quantized<F, I>
 where
     F: Float + Display,
     I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", Self::decode(self.value))
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&<Self as QuantizedRepr<F, I>>::decode(self.value), f)
     }
 }
 
-impl<F, I> std::fmt::Debug for Quantized<F, I>
+impl<F, I> Debug for Quantized<F, I>
 where
-    F: Float + std::fmt::Debug,
+    F: Float + Debug,
     I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", Self::decode(self.value))
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&<Self as QuantizedRepr<F, I>>::decode(self.value), f)
     }
 }
 
-impl<F, I: Copy> Copy for Quantized<F, I>
+impl<F, I> Copy for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
 {
 }
 
-impl<F, I: Copy> Clone for Quantized<F, I>
+impl<F, I> Clone for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
@@ -106,7 +149,7 @@ where
     }
 }
 
-impl<F, I: PartialEq> PartialEq for Quantized<F, I>
+impl<F, I> PartialEq for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
@@ -116,24 +159,24 @@ where
     }
 }
 
-impl<F, I: Eq> Eq for Quantized<F, I>
+impl<F, I> Eq for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
 {
 }
 
-impl<F, I: Hash> Hash for Quantized<F, I>
+impl<F, I> Hash for Quantized<F, I>
 where
     F: Float,
-    I: PrimInt,
+    I: PrimInt + Hash,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
     }
 }
 
-impl<F, I: PartialOrd> PartialOrd for Quantized<F, I>
+impl<F, I> PartialOrd for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
@@ -143,7 +186,7 @@ where
     }
 }
 
-impl<F, I: Ord> Ord for Quantized<F, I>
+impl<F, I> Ord for Quantized<F, I>
 where
     F: Float,
     I: PrimInt,
@@ -153,396 +196,516 @@ where
     }
 }
 
-impl<F, I: Default> Default for Quantized<F, I>
+impl<F, I> Default for Quantized<F, I>
 where
     F: Float,
-    I: PrimInt,
-{
-    fn default() -> Self {
-        Self {
-            value: I::default(),
-            _float: PhantomData,
-        }
-    }
-}
-
-impl<F, I> Quantized<F, I>
-where
-    F: Float,
-    I: PrimInt,
+    I: PrimInt + Zero,
     Self: QuantizedRepr<F, I>,
 {
-    /// Encodes `value` using the specified representation.
-    pub fn from_float(value: F) -> Result<Self> {
-        Ok(Self {
-            value: Self::encode(value)?,
-            _float: PhantomData,
-        })
-    }
-
-    /// Decodes this value using the specified representation.
-    pub fn into_float(self) -> F {
-        Self::decode(self.value)
-    }
-
-    /// Returns the stored integer code.
-    pub fn raw(&self) -> &I {
-        &self.value
+    fn default() -> Self {
+        Self::from_raw(I::zero())
     }
 }
 
-/// The number of integer steps per unit of the represented float.
-const SCALE: f64 = 1024.0;
+/// Encodes a finite float using a fixed scale and a representation cutoff.
+fn encode_scaled<F, I>(value: F, limit: f64) -> Result<I>
+where
+    F: Float + ToPrimitive,
+    I: PrimInt + NumCast + FromPrimitive,
+{
+    if !value.is_finite() {
+        bail!("non-finite values are not supported");
+    }
 
-/// Implements a float/integer representation pair using an explicit
-/// supported-distance cutoff.
-///
-/// The cutoff leaves room below the integer endpoint for scaling and
-/// rounding, so normal values do not encode to the reserved MIN/MAX codes.
-macro_rules! impl_quantized_repr {
-    ($float:ty, $storage:ty, $limit:expr, $scaled_limit:expr) => {
-        impl QuantizedRepr<$float, $storage> for Quantized<$float, $storage> {
-            fn encode(value: $float) -> Result<$storage> {
-                if value.is_nan() {
-                    bail!("NaN not supported");
-                }
+    let value = value
+        .to_f64()
+        .ok_or_else(|| anyhow::anyhow!("value cannot be converted to f64"))?;
 
-                let quantized = match value as f64 {
-                    v if v <= -$limit => return Ok(<$storage>::MIN),
-                    v if v >= $limit => return Ok(<$storage>::MAX),
-                    v => (v * SCALE).round() as $storage,
-                };
+    if value <= -limit || value >= limit {
+        bail!("value is outside the representable range");
+    }
 
-                Ok(quantized)
-            }
+    let scaled = (value * SCALE).round();
+    let code =
+        I::from_f64(scaled).ok_or_else(|| anyhow::anyhow!("scaled value is not representable"))?;
 
-            fn decode(value: $storage) -> $float {
-                match value {
-                    v if v == <$storage>::MIN => <$float>::MIN,
-                    v if v == <$storage>::MAX => <$float>::MAX,
-                    v => (v as f64 / SCALE) as $float,
-                }
-            }
+    if code == I::min_value() || code == I::max_value() {
+        bail!("encoded value collides with a reserved sentinel");
+    }
 
-            /// Clamps a code to the reserved sentinel when it is outside the
-            /// representable distance range, so out-of-range values tile.
-            fn clamp_to_sentinel(v: $storage) -> $storage {
-                const SCALED_LIMIT: $storage = $scaled_limit;
-                match v {
-                    v if v <= -SCALED_LIMIT => <$storage>::MIN,
-                    v if v >= SCALED_LIMIT => <$storage>::MAX,
-                    _ => v,
-                }
-            }
-        }
-    };
+    Ok(code)
 }
 
-// These limits are deliberately conservative. The i32/f32 and i64/f64
-// pairings have much more storage range than the f16/i16 pairing.
-impl_quantized_repr!(f32, i32, 2_097_151.0, 2_097_151 * 1024);
-impl_quantized_repr!(
-    f64,
-    i64,
-    9_007_199_254_740_991.0,
-    9_007_199_254_740_991 * 1024
-);
+/// Decodes a scaled integer code. Integer endpoints are reserved sentinels.
+fn decode_scaled<F, I>(value: I) -> F
+where
+    F: Float + FromPrimitive,
+    I: PrimInt + ToPrimitive,
+{
+    if value == I::min_value() {
+        F::neg_infinity()
+    } else if value == I::max_value() {
+        F::infinity()
+    } else {
+        F::from_f64(value.to_f64().unwrap() / SCALE).unwrap()
+    }
+}
 
-/// Representation for `f16` values stored as `i16`.
-///
-/// The input is widened before scaling, avoiding intermediate `f16`
-/// overflow. The supported distance cutoff is determined by `i16` storage.
+impl QuantizedRepr<f32, i32> for Quantized<f32, i32> {
+    const LIMIT: f64 = 2_097_151.0;
+    const SCALED_LIMIT: i32 = 2_097_151 * 1024;
+
+    fn encode(value: f32) -> Result<i32> {
+        encode_scaled(value, Self::LIMIT)
+    }
+
+    fn decode(value: i32) -> f32 {
+        decode_scaled(value)
+    }
+}
+
+impl QuantizedRepr<f64, i64> for Quantized<f64, i64> {
+    const LIMIT: f64 = 9_007_199_254_740_991.0;
+    const SCALED_LIMIT: i64 = 9_007_199_254_740_991 * 1024;
+
+    fn encode(value: f64) -> Result<i64> {
+        encode_scaled(value, Self::LIMIT)
+    }
+
+    fn decode(value: i64) -> f64 {
+        decode_scaled(value)
+    }
+}
+
 impl QuantizedRepr<f16, i16> for Quantized<f16, i16> {
-    fn encode(value: f16) -> Result<i16> {
-        let value = match value.to_f32() {
-            v if v <= -31.0 => return Ok(i16::MIN),
-            v if v >= 31.0 => return Ok(i16::MAX),
-            v if v.is_nan() => bail!("Nan not supported"),
-            v => v,
-        };
+    const LIMIT: f64 = 31.0;
+    const SCALED_LIMIT: i16 = 31 * 1024;
 
-        let scaled = (value as f64 * SCALE).round();
-        Ok(scaled as i16)
+    fn encode(value: f16) -> Result<i16> {
+        encode_scaled(value, Self::LIMIT)
     }
 
     fn decode(value: i16) -> f16 {
-        match value {
-            v if v == i16::MIN => f16::MIN,
-            v if v == i16::MAX => f16::MAX,
-            v => f16::from_f64(v as f64 / SCALE),
-        }
-    }
-
-    /// Clamps a code to the reserved sentinel when it is outside the
-    /// representable distance range, so out-of-range values tile.
-    fn clamp_to_sentinel(v: i16) -> i16 {
-        const SCALED_LIMIT: i16 = 31 * 1024;
-        match v {
-            v if v <= -SCALED_LIMIT => i16::MIN,
-            v if v >= SCALED_LIMIT => i16::MAX,
-            _ => v,
-        }
+        decode_scaled(value)
     }
 }
 
 impl<F, I> NumCast for Quantized<F, I>
 where
-    F: NumCast + Float,
-    I: Copy + PrimInt,
+    F: Float + NumCast,
+    I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
     fn from<T: ToPrimitive>(n: T) -> Option<Self> {
-        let float = <F as NumCast>::from(n)?;
-        let value = <Self as QuantizedRepr<F, I>>::encode(float).ok()?;
-
-        Some(Self {
-            value,
-            _float: PhantomData,
-        })
+        Self::from_float(F::from(n)?).ok()
     }
 }
 
 impl<F, I> ToPrimitive for Quantized<F, I>
 where
-    F: ToPrimitive + Float,
-    I: Copy + PrimInt,
+    F: Float + ToPrimitive,
+    I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
     fn to_i64(&self) -> Option<i64> {
-        <Self as QuantizedRepr<F, I>>::decode(self.value).to_i64()
+        self.clone().into_float().to_i64()
     }
 
     fn to_u64(&self) -> Option<u64> {
-        <Self as QuantizedRepr<F, I>>::decode(self.value).to_u64()
+        self.clone().into_float().to_u64()
     }
 
     fn to_f64(&self) -> Option<f64> {
-        <Self as QuantizedRepr<F, I>>::decode(self.value).to_f64()
+        self.clone().into_float().to_f64()
     }
 }
 
 impl<F, I> FromPrimitive for Quantized<F, I>
 where
-    F: FromPrimitive + Float,
-    I: Copy + PrimInt,
+    F: Float + FromPrimitive,
+    I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
     fn from_i64(n: i64) -> Option<Self> {
-        let float = F::from_i64(n)?;
-        let value = <Self as QuantizedRepr<F, I>>::encode(float).ok()?;
-
-        Some(Self {
-            value,
-            _float: PhantomData,
-        })
+        Self::from_float(F::from_i64(n)?).ok()
     }
 
     fn from_u64(n: u64) -> Option<Self> {
-        let float = F::from_u64(n)?;
-        let value = <Self as QuantizedRepr<F, I>>::encode(float).ok()?;
+        Self::from_float(F::from_u64(n)?).ok()
+    }
 
-        Some(Self {
-            value,
-            _float: PhantomData,
-        })
+    fn from_f64(n: f64) -> Option<Self> {
+        Self::from_float(F::from_f64(n)?).ok()
     }
 }
 
-/// Re-encodes a computed float value into this representation.
-///
-/// This is the "encode" half of the decode/compute/encode pattern used by the
-/// arithmetic and math operators below.
-impl<F, I> Quantized<F, I>
+impl<F, I> Zero for Quantized<F, I>
 where
-    I: Copy + PrimInt,
     F: Float,
+    I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
-    /// Wraps a computed `F` value by encoding it into the storage type.
-    fn encode_value(value: F) -> Result<Self> {
-        <Self as QuantizedRepr<F, I>>::encode(value).map(|value| Self {
-            value,
-            _float: PhantomData,
-        })
+    fn zero() -> Self {
+        Self::from_raw(I::zero())
+    }
+
+    fn is_zero(&self) -> bool {
+        self.value.is_zero()
     }
 }
 
-/// Helpers that decode a value, run a `f64` operation, and re-encode the result.
-///
-/// The computation is performed in `f64` and converted back to `F` before the
-/// final encode, so the encode can still fail when the result is not
-/// representable in the storage range.
-impl<F, I> Quantized<F, I>
+impl<F, I> One for Quantized<F, I>
 where
-    F: FromPrimitive + ToPrimitive + Float,
-    I: Copy + PrimInt,
+    F: Float,
+    I: PrimInt,
     Self: QuantizedRepr<F, I>,
 {
-    /// Decodes this value, applies a unary `f64` operation, and re-encodes it.
-    fn map_float(&self, f: impl FnOnce(f64) -> f64) -> Self {
-        let decoded = <Self as QuantizedRepr<F, I>>::decode(self.value);
-        let value = decoded.to_f64().unwrap();
-        let result = F::from_f64(f(value)).unwrap();
-        Self::encode_value(result).unwrap()
-    }
-
-    /// Decodes two values, applies a binary `f64` operation, and re-encodes it.
-    fn map_pair(&self, other: &Self, f: impl FnOnce(f64, f64) -> f64) -> Self {
-        let a = <Self as QuantizedRepr<F, I>>::decode(self.value)
-            .to_f64()
-            .unwrap();
-        let b = <Self as QuantizedRepr<F, I>>::decode(other.value)
-            .to_f64()
-            .unwrap();
-        let result = F::from_f64(f(a, b)).unwrap();
-
-        Self::encode_value(result).expect("Shouldn't be Nan")
-    }
-
-    /// Hypotenuse of the two decoded values.
-    pub fn hypot(&self, other: &Self) -> Self {
-        self.map_pair(other, f64::hypot)
-    }
-
-    /// `atan2` of the two decoded values.
-    pub fn atan2(&self, other: &Self) -> Self {
-        self.map_pair(other, f64::atan2)
-    }
-
-    /// Raises the decoded value to the power of another decoded value.
-    pub fn pow(&self, other: &Self) -> Self {
-        self.map_pair(other, f64::powf)
-    }
-
-    /// Raises the decoded value to an integer power.
-    pub fn powi(&self, n: i32) -> Self {
-        self.map_float(|v| v.powi(n))
+    fn one() -> Self {
+        Self::from_result(F::one())
     }
 }
 
-/// Standard unary math operations. Each decodes the value, computes the
-/// matching `f64` function, and re-encodes the result. Non-representable
-/// results (NaN, infinity, or outside the storage range) are reported as errors.
-macro_rules! impl_quantized_unary_math {
-    ($($method:ident),*) => {
-        impl<F, I> Quantized<F, I>
+impl<F, I> Num for Quantized<F, I>
+where
+    F: Float + NumCast,
+    I: PrimInt,
+    Self: QuantizedRepr<F, I>,
+{
+    type FromStrRadixErr = <F as Num>::FromStrRadixErr;
+
+    fn from_str_radix(s: &str, radix: u32) -> std::result::Result<Self, Self::FromStrRadixErr> {
+        let value = F::from_str_radix(s, radix)?;
+        Ok(Self::from_result(value))
+    }
+}
+
+macro_rules! impl_binary_op {
+    ($trait:ident, $method:ident, $op:tt) => {
+        impl<F, I> $trait for Quantized<F, I>
         where
-            F: FromPrimitive + ToPrimitive + Float,
-            I: Copy + PrimInt,
+            F: Float,
+            I: PrimInt,
             Self: QuantizedRepr<F, I>,
-          {
-            $(
-                /// Applies the corresponding `f64` method to the decoded value.
-                pub fn $method(&self) -> Self {
-                    self.map_float(f64::$method)
-                }
-            )*
-        }
-    };
-}
+        {
+            type Output = Self;
 
-impl_quantized_unary_math!(
-    abs, signum, sqrt, sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, asinh, acosh, atanh,
-    floor, ceil, round, trunc, ln, log2, log10, exp, exp2
-);
-
-/// For implementing operators that can be accomplished without a conversion
-macro_rules! impl_quantized_add_sub {
-    ($trait:ident, $method:ident, $op:tt) => {
-        paste! {
-            impl<F, I> $trait for Quantized<F, I>
-            where
-                I: Copy + $trait<Output = I> + PrimInt,
-                F: Float,
-                Self: QuantizedRepr<F, I>,
-            {
-                type Output = Self;
-
-                fn $method(self, rhs: Self) -> Self {
-                    Self {
-                        value: Self::clamp_to_sentinel(self.value $op rhs.value),
-                        _float: Default::default(),
-                    }
-                }
-            }
-
-            impl<F, I> [<$trait Assign>] for Quantized<F, I>
-            where
-                I: Copy + [<$trait>]<Output = I> + PrimInt,
-                F: Float,
-                Self: QuantizedRepr<F, I>,
-            {
-                fn [<$method _assign>](&mut self, rhs: Self) {
-                    self.value = Self::clamp_to_sentinel(self.value $op rhs.value);
-                }
+            fn $method(self, rhs: Self) -> Self::Output {
+                self.zip(rhs, |a, b| a $op b)
             }
         }
     };
 }
 
-impl_quantized_add_sub!(Add, add, +);
-impl_quantized_add_sub!(Sub, sub, -);
+impl_binary_op!(Add, add, +);
+impl_binary_op!(Sub, sub, -);
+impl_binary_op!(Mul, mul, *);
+impl_binary_op!(Div, div, /);
+impl_binary_op!(Rem, rem, %);
 
-/// For implementing operators that can be accomplished without a conversion
-macro_rules! impl_quantized_mul_div {
-    ($trait:ident, $method:ident, $op:tt) => {
-        paste! {
-            impl<F, I> $trait for Quantized<F, I>
-            where
-                F: Copy + $trait<Output = F> + Float,
-                I: Copy + PrimInt,
-                Self: QuantizedRepr<F, I>,
-            {
-                type Output = Self;
-
-                fn $method(self, rhs: Self) -> Self {
-                    Self::from_float(
-                        Self::decode(self.value) $op Self::decode(rhs.value)
-                    ).unwrap()
-                }
-            }
-
-            impl<F, I> [<$trait Assign>] for Quantized<F, I>
-            where
-                F: [<$trait>]<Output = F> + Float,
-                I: Copy + PrimInt,
-                Self: QuantizedRepr<F, I>,
-            {
-                    fn [<$method _assign>](&mut self, rhs: Self) {
-                        self.value = Self::encode(
-                            Self::decode(self.value) $op Self::decode(rhs.value)
-                        ).unwrap();
-                    }
+macro_rules! impl_assign_op {
+    ($trait:ident, $method:ident, $op_trait:ident, $op_method:ident) => {
+        impl<F, I> $trait for Quantized<F, I>
+        where
+            F: Float,
+            I: PrimInt,
+            Self: QuantizedRepr<F, I>,
+        {
+            fn $method(&mut self, rhs: Self) {
+                *self = (*self).$op_method(rhs);
             }
         }
     };
 }
-impl_quantized_mul_div!(Mul, mul, *);
-impl_quantized_mul_div!(Div, div, /);
 
-/// Unary negation. Decodes the operand, negates it, and re-encodes the result.
+impl_assign_op!(AddAssign, add_assign, Add, add);
+impl_assign_op!(SubAssign, sub_assign, Sub, sub);
+impl_assign_op!(MulAssign, mul_assign, Mul, mul);
+impl_assign_op!(DivAssign, div_assign, Div, div);
+impl_assign_op!(RemAssign, rem_assign, Rem, rem);
+
 impl<F, I> Neg for Quantized<F, I>
 where
-    I: PrimInt + Copy + Neg<Output = I>,
     F: Float,
+    I: PrimInt,
+    Self: QuantizedRepr<F, I>,
 {
     type Output = Self;
 
-    fn neg(self) -> Self {
-        Self {
-            value: -self.value,
-            _float: Default::default(),
-        }
+    fn neg(self) -> Self::Output {
+        self.map(Neg::neg)
     }
 }
 
-/// Quantized `f16` values stored in `i16`.
+impl<F, I> Pow<Self> for Quantized<F, I>
+where
+    F: Float + Pow<F, Output = F>,
+    I: PrimInt,
+    Self: QuantizedRepr<F, I>,
+{
+    type Output = Self;
+
+    fn pow(self, rhs: Self) -> Self::Output {
+        Self::from_result(self.into_float().pow(rhs.into_float()))
+    }
+}
+
+impl<F, I> Signed for Quantized<F, I>
+where
+    F: Float,
+    I: PrimInt + Signed,
+    Self: QuantizedRepr<F, I>,
+{
+    fn abs(&self) -> Self {
+        Self::from_raw(self.value.abs())
+    }
+
+    fn abs_sub(&self, other: &Self) -> Self {
+        Self::from_raw(self.value.abs_sub(&other.value))
+    }
+
+    fn signum(&self) -> Self {
+        Self::from_raw(self.value.signum())
+    }
+
+    fn is_positive(&self) -> bool {
+        self.value.is_positive()
+    }
+
+    fn is_negative(&self) -> bool {
+        self.value.is_negative()
+    }
+}
+
+impl<F, I> Float for Quantized<F, I>
+where
+    F: Float + FromPrimitive + ToPrimitive,
+    I: PrimInt + NumCast + Signed,
+    Self: QuantizedRepr<F, I>,
+{
+    fn nan() -> Self {
+        panic!("Quantized does not support NaN")
+    }
+
+    fn infinity() -> Self {
+        Self::from_raw(I::max_value())
+    }
+
+    fn neg_infinity() -> Self {
+        Self::from_raw(I::min_value())
+    }
+
+    fn neg_zero() -> Self {
+        Self::zero()
+    }
+
+    fn min_value() -> Self {
+        Self::from_raw(I::min_value())
+    }
+
+    fn min_positive_value() -> Self {
+        Self::zero()
+    }
+
+    fn max_value() -> Self {
+        Self::from_raw(I::max_value())
+    }
+
+    fn epsilon() -> Self {
+        Self::from_result(F::epsilon())
+    }
+
+    fn is_nan(self) -> bool {
+        false
+    }
+
+    fn is_infinite(self) -> bool {
+        false
+    }
+
+    fn is_finite(self) -> bool {
+        true
+    }
+
+    fn is_normal(self) -> bool {
+        self.into_float().is_normal()
+    }
+
+    fn classify(self) -> std::num::FpCategory {
+        self.into_float().classify()
+    }
+
+    fn floor(self) -> Self {
+        self.map(Float::floor)
+    }
+
+    fn ceil(self) -> Self {
+        self.map(Float::ceil)
+    }
+
+    fn round(self) -> Self {
+        self.map(Float::round)
+    }
+
+    fn trunc(self) -> Self {
+        self.map(Float::trunc)
+    }
+
+    fn fract(self) -> Self {
+        self.map(Float::fract)
+    }
+
+    fn abs(self) -> Self {
+        self.map(Float::abs)
+    }
+
+    fn signum(self) -> Self {
+        self.map(Float::signum)
+    }
+
+    fn is_sign_positive(self) -> bool {
+        self.into_float().is_sign_positive()
+    }
+
+    fn is_sign_negative(self) -> bool {
+        self.into_float().is_sign_negative()
+    }
+
+    fn mul_add(self, a: Self, b: Self) -> Self {
+        Self::from_result(self.into_float().mul_add(a.into_float(), b.into_float()))
+    }
+
+    fn recip(self) -> Self {
+        self.map(Float::recip)
+    }
+
+    fn powi(self, n: i32) -> Self {
+        Self::from_result(self.into_float().powi(n))
+    }
+
+    fn powf(self, n: Self) -> Self {
+        Self::from_result(self.into_float().powf(n.into_float()))
+    }
+
+    fn sqrt(self) -> Self {
+        self.map(Float::sqrt)
+    }
+
+    fn exp(self) -> Self {
+        self.map(Float::exp)
+    }
+
+    fn exp2(self) -> Self {
+        self.map(Float::exp2)
+    }
+
+    fn ln(self) -> Self {
+        self.map(Float::ln)
+    }
+
+    fn log(self, base: Self) -> Self {
+        Self::from_result(self.into_float().log(base.into_float()))
+    }
+
+    fn log2(self) -> Self {
+        self.map(Float::log2)
+    }
+
+    fn log10(self) -> Self {
+        self.map(Float::log10)
+    }
+
+    fn max(self, other: Self) -> Self {
+        Self::from_result(self.into_float().max(other.into_float()))
+    }
+
+    fn min(self, other: Self) -> Self {
+        Self::from_result(self.into_float().min(other.into_float()))
+    }
+
+    fn abs_sub(self, other: Self) -> Self {
+        Self::from_raw(self.value.abs_sub(&other.value))
+    }
+
+    fn cbrt(self) -> Self {
+        self.map(Float::cbrt)
+    }
+
+    fn hypot(self, other: Self) -> Self {
+        Self::from_result(self.into_float().hypot(other.into_float()))
+    }
+
+    fn sin(self) -> Self {
+        self.map(Float::sin)
+    }
+
+    fn cos(self) -> Self {
+        self.map(Float::cos)
+    }
+
+    fn tan(self) -> Self {
+        self.map(Float::tan)
+    }
+
+    fn asin(self) -> Self {
+        self.map(Float::asin)
+    }
+
+    fn acos(self) -> Self {
+        self.map(Float::acos)
+    }
+
+    fn atan(self) -> Self {
+        self.map(Float::atan)
+    }
+
+    fn atan2(self, other: Self) -> Self {
+        Self::from_result(self.into_float().atan2(other.into_float()))
+    }
+
+    fn sin_cos(self) -> (Self, Self) {
+        let (sin, cos) = self.into_float().sin_cos();
+        (Self::from_result(sin), Self::from_result(cos))
+    }
+
+    fn exp_m1(self) -> Self {
+        self.map(Float::exp_m1)
+    }
+
+    fn ln_1p(self) -> Self {
+        self.map(Float::ln_1p)
+    }
+
+    fn sinh(self) -> Self {
+        self.map(Float::sinh)
+    }
+
+    fn cosh(self) -> Self {
+        self.map(Float::cosh)
+    }
+
+    fn tanh(self) -> Self {
+        self.map(Float::tanh)
+    }
+
+    fn asinh(self) -> Self {
+        self.map(Float::asinh)
+    }
+
+    fn acosh(self) -> Self {
+        self.map(Float::acosh)
+    }
+
+    fn atanh(self) -> Self {
+        self.map(Float::atanh)
+    }
+
+    fn integer_decode(self) -> (u64, i16, i8) {
+        self.into_float().integer_decode()
+    }
+}
+
 pub type Quant16 = Quantized<f16, i16>;
-
-/// Quantized `f32` values stored in `i32`.
 pub type Quant32 = Quantized<f32, i32>;
-
-/// Quantized `f64` values stored in `i64`.
 pub type Quant64 = Quantized<f64, i64>;
 
 #[cfg(test)]
@@ -587,8 +750,8 @@ mod tests {
         let a = Quant32::from_float(3.0_f32)?;
         let b = Quant32::from_float(4.0_f32)?;
 
-        assert_eq!(a.hypot(&b).into_float(), 5.0_f32);
-        assert_eq!(a.pow(&b).into_float(), 81.0_f32);
+        assert_eq!(a.hypot(b).into_float(), 5.0_f32);
+        assert_eq!(a.pow(b).into_float(), 81.0_f32);
 
         Ok(())
     }
@@ -615,6 +778,6 @@ impl<F, I> VoxelTrait for Quantized<F, I>
 where
     F: std::fmt::Debug + std::fmt::Display + Float,
     I: Default + Hash + PrimInt,
-    Self: std::fmt::Debug + std::fmt::Display,
+    Self: std::fmt::Debug + std::fmt::Display + QuantizedRepr<F, I>,
 {
 }
