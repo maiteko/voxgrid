@@ -11,6 +11,7 @@
 
 use super::*;
 use anyhow::{Result, anyhow};
+use glam::U64Vec3;
 use std::collections::HashSet;
 
 #[cfg(feature = "bytemuck")]
@@ -177,15 +178,15 @@ impl CoordBBox {
     }
 
     /// Return `max - min + 1` per axis, or zero on every axis when empty.
-    pub fn axis_dims(&self) -> [usize; 3] {
+    pub fn axis_dims(&self) -> U64Vec3 {
         if self.empty() {
-            [0; 3]
+            U64Vec3::ZERO
         } else {
-            [
-                (self.max.x as i64 - self.min.x as i64 + 1) as usize,
-                (self.max.y as i64 - self.min.y as i64 + 1) as usize,
-                (self.max.z as i64 - self.min.z as i64 + 1) as usize,
-            ]
+            U64Vec3::new(
+                (self.max.x as i64 - self.min.x as i64 + 1) as u64,
+                (self.max.y as i64 - self.min.y as i64 + 1) as u64,
+                (self.max.z as i64 - self.min.z as i64 + 1) as u64,
+            )
         }
     }
 
@@ -193,7 +194,7 @@ impl CoordBBox {
     /// [`CoordBBox::axis_dims`] (zero when empty).
     pub fn volume(&self) -> usize {
         let d = self.axis_dims();
-        d[0] * d[1] * d[2]
+        (d.x * d.y * d.z) as usize
     }
 
     /// Return whether the box has positive extent on some axis and can be split
@@ -204,27 +205,35 @@ impl CoordBBox {
     }
 
     /// Return the axis index (0 = `x`, 1 = `y`, 2 = `z`) of the smallest dimension.
-
     pub fn min_extent(&self) -> usize {
-        self.axis_dims()
-            .iter()
-            .cloned()
-            .enumerate()
-            .min_by_key(|x| x.1)
-            .unwrap()
-            .0
+        let dims = self.axis_dims();
+        let min = dims.min_element();
+        for idx in 0..3 {
+            if dims[idx] == min {
+                return idx;
+            }
+        }
+        panic!("should never reach here")
     }
 
     /// Return the axis index (0 = `x`, 1 = `y`, 2 = `z`) of the largest dimension.
-
     pub fn max_extent(&self) -> usize {
-        self.axis_dims()
-            .iter()
-            .cloned()
-            .enumerate()
-            .max_by_key(|x| x.1)
-            .unwrap()
-            .0
+        let dims = self.axis_dims();
+        let max = dims.max_element();
+        for idx in 0..3 {
+            if dims[idx] == max {
+                return idx;
+            }
+        }
+        panic!("should never reach here")
+    }
+
+    pub fn min_length(&self) -> u64 {
+        self.axis_dims().min_element() as u64
+    }
+
+    pub fn max_length(&self) -> u64 {
+        self.axis_dims().min_element() as u64
     }
 
     /// Return whether `xyz` lies inside the box, inclusive of the boundary.
@@ -799,7 +808,7 @@ mod test {
 
         // Empty bbox
         let empty = CoordBBox::default();
-        assert_eq!(empty.axis_dims(), [0; 3]);
+        assert_eq!(empty.axis_dims(), U64Vec3::ZERO);
     }
 
     #[test]

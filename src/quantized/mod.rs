@@ -770,14 +770,3 @@ mod tests {
         Ok(())
     }
 }
-
-#[cfg(feature = "voxelis")]
-use voxelis::VoxelTrait;
-#[cfg(feature = "voxelis")]
-impl<F, I> VoxelTrait for Quantized<F, I>
-where
-    F: std::fmt::Debug + std::fmt::Display + Float,
-    I: Default + Hash + PrimInt,
-    Self: std::fmt::Debug + std::fmt::Display + QuantizedRepr<F, I>,
-{
-}

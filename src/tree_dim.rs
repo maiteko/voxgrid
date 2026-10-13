@@ -559,15 +559,8 @@ impl<'a, const MAX_DEPTH: usize> NodeLevel<'a, MAX_DEPTH> {
         let bbox = self.enclose_children(*bbox);
         let child_stride = self.child_stride();
 
-        let [x, y, z]: [usize; 3] = bbox
-            .axis_dims()
-            .iter()
-            .map(|v| v / child_stride)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        x * y * z
+        let d = bbox.axis_dims() / child_stride as u64;
+        (d.x * d.y * d.z) as usize
     }
 
     /// The child [`Coord`]s of every child node of this level overlapping `bbox`.

@@ -6,7 +6,6 @@ pub mod cube;
 #[cfg(feature = "quantized")]
 pub mod quantized;
 mod tree_dim;
-#[cfg(feature = "voxgrid")]
 mod vox_grid;
 
 pub use coord::*;
@@ -14,7 +13,6 @@ pub use coord_bbox::CoordBBox;
 #[cfg(feature = "quantized")]
 pub use quantized::{Quant16, Quant32, Quant64};
 pub use tree_dim::*;
-#[cfg(feature = "voxgrid")]
 pub use vox_grid::*;
 
 mod config_index {
