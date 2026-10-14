@@ -31,9 +31,6 @@ pub trait VoxGrid<T>: VoxGridBackground<T> {
     /// Returns the voxel at `pos`, or `None` if it doesn't exist.
     fn get_voxel(&self, pos: &Coord) -> Option<T>;
 
-    /// Returns a reference to the voxel at `pos`, if it exists.
-    fn get_voxel_ref(&self, pos: &Coord) -> Option<&T>;
-
     /// Returns the resolved value at position,
     /// or the background value if it doesn't exist
     fn get_value(&self, pos: &Coord) -> T {
@@ -43,10 +40,6 @@ pub trait VoxGrid<T>: VoxGridBackground<T> {
 
 /// Mutating access to a [`VoxGrid`], in world [`Coord`]s.
 pub trait VoxGridMut<T>: VoxGridBackground<T> {
-    /// Returns a mutable reference to the voxel at `pos`
-    /// Creates a valid voxel set to bgv if it doesn't exist
-    fn get_voxel_mut(&mut self, pos: &Coord) -> &mut T;
-
     /// Sets the voxel at `pos` to `v`, or clears it.
     /// how "clear" works is implementation dependent
     fn set_voxel(&mut self, pos: &Coord, v: Option<T>);

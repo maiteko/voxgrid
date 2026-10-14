@@ -43,11 +43,6 @@ where
         self.grid.get_voxel(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    pub fn get_voxel_ref(&self, pos: &LocalCoord) -> Option<&T> {
-        self.grid
-            .get_voxel_ref(&self.bbox().local_to_global(pos).ok()?)
-    }
-
     pub fn get_value(&self, pos: &LocalCoord) -> T {
         self.grid
             .get_value(&self.bbox().local_to_global(pos).unwrap())
@@ -90,19 +85,9 @@ where
         self.grid.get_voxel(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    pub fn get_voxel_ref(&self, pos: &LocalCoord) -> Option<&T> {
-        self.grid
-            .get_voxel_ref(&self.bbox().local_to_global(pos).ok()?)
-    }
-
     pub fn get_value(&self, pos: &LocalCoord) -> T {
         self.grid
             .get_value(&self.bbox().local_to_global(pos).unwrap())
-    }
-
-    pub fn get_voxel_mut(&mut self, pos: &LocalCoord) -> &mut T {
-        self.grid
-            .get_voxel_mut(&self.bbox().local_to_global(pos).unwrap())
     }
 
     pub fn set_voxel(&mut self, pos: &LocalCoord, v: Option<T>) {
