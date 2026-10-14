@@ -4,14 +4,10 @@ use std::marker::PhantomData;
 
 /// A shared, read-only view into a [`VoxGrid`], restricted to a [`CoordBBox`].
 ///
-/// The slice borrows the underlying grid and records a box. As a [`VoxGrid`] it
-/// forwards world-coord access to the grid and reports its box as its
-/// [`limits`](VoxGrid::limits). Because it is read-only it composes as a `VoxGrid`
-/// bound without needing mutation rights over the parent.
+/// The slice borrows the underlying grid and records a box. converts local bbox coordinates
+/// to global, and forwards them to the underlying grid
 ///
-/// The restriction to `bbox` is advertised through [`limits`](Self::limits); like
-/// the parent's own access, in-bounds reads forward the parent's sparse result,
-/// so the window does not fabricate values for absent voxels.
+/// The global `bbox` is advertised through [`bbox`](Self::bbox);
 #[derive(Copy, Clone, Debug)]
 pub struct VoxGridSlice<'a, G, T> {
     grid: &'a G,
@@ -20,7 +16,10 @@ pub struct VoxGridSlice<'a, G, T> {
     _marker: PhantomData<T>,
 }
 
-impl<'a, G, T> VoxGridSlice<'a, G, T> {
+impl<'a, G, T> VoxGridSlice<'a, G, T>
+where
+    G: VoxGrid<T>,
+{
     /// A new slice over `grid` restricted to `bbox`.
     pub fn new(grid: &'a G, bbox: CoordBBox) -> Self {
         Self {
@@ -34,33 +33,28 @@ impl<'a, G, T> VoxGridSlice<'a, G, T> {
     pub fn bbox(&self) -> &CoordBBox {
         &self.bbox
     }
-}
 
-impl<'a, G, T> VoxGrid<T> for VoxGridSlice<'a, G, T>
-where
-    G: VoxGrid<T>,
-{
-    fn bgv(&self) -> Option<T> {
-        self.grid.bgv()
+    /// Create a new read reference with bbox size modified by padding
+    pub fn pad(&self, padding: i32) -> Self {
+        Self::new(self.grid, self.bbox.expand_by(padding))
     }
 
-    fn limits(&self) -> CoordBBox {
-        self.bbox
+    pub fn get_voxel(&self, pos: &LocalCoord) -> Option<T> {
+        self.grid.get_voxel(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    fn get_voxel(&self, pos: &Coord) -> Option<T> {
-        self.grid.get_voxel(pos)
+    pub fn get_voxel_ref(&self, pos: &LocalCoord) -> Option<&T> {
+        self.grid
+            .get_voxel_ref(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    fn get_voxel_ref(&self, pos: &Coord) -> Option<&T> {
-        self.grid.get_voxel_ref(pos)
+    pub fn get_value(&self, pos: &LocalCoord) -> T {
+        self.grid
+            .get_value(&self.bbox().local_to_global(pos).unwrap())
     }
 }
 
 /// A mutable view into a [`VoxGrid`], restricted to a [`CoordBBox`].
-///
-/// Behaves like [`VoxGridSlice`] but takes `&mut`, so it implements both
-/// [`VoxGridMut`] and forwards writes to the parent.
 #[derive(Debug)]
 pub struct VoxGridSliceMut<'a, G, T> {
     grid: &'a mut G,
@@ -69,7 +63,10 @@ pub struct VoxGridSliceMut<'a, G, T> {
     _marker: PhantomData<T>,
 }
 
-impl<'a, G, T> VoxGridSliceMut<'a, G, T> {
+impl<'a, G, T> VoxGridSliceMut<'a, G, T>
+where
+    G: VoxGridMut<T> + VoxGrid<T>,
+{
     /// A new mutable slice over `grid` restricted to `bbox`.
     pub fn new(grid: &'a mut G, bbox: CoordBBox) -> Self {
         Self {
@@ -83,38 +80,41 @@ impl<'a, G, T> VoxGridSliceMut<'a, G, T> {
     pub fn bbox(&self) -> &CoordBBox {
         &self.bbox
     }
-}
 
-impl<'a, G, T> VoxGrid<T> for VoxGridSliceMut<'a, G, T>
-where
-    G: VoxGrid<T>,
-{
-    fn bgv(&self) -> Option<T> {
-        self.grid.bgv()
+    /// Pads bbox in place
+    pub fn pad(&mut self, padding: i32) {
+        self.bbox.expand(padding);
     }
 
-    fn limits(&self) -> CoordBBox {
-        self.bbox
+    pub fn get_voxel(&self, pos: &LocalCoord) -> Option<T> {
+        self.grid.get_voxel(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    fn get_voxel(&self, pos: &Coord) -> Option<T> {
-        self.grid.get_voxel(pos)
+    pub fn get_voxel_ref(&self, pos: &LocalCoord) -> Option<&T> {
+        self.grid
+            .get_voxel_ref(&self.bbox().local_to_global(pos).ok()?)
     }
 
-    fn get_voxel_ref(&self, pos: &Coord) -> Option<&T> {
-        self.grid.get_voxel_ref(pos)
-    }
-}
-
-impl<'a, G, T> VoxGridMut<T> for VoxGridSliceMut<'a, G, T>
-where
-    G: VoxGridMut<T>,
-{
-    fn get_voxel_mut(&mut self, pos: &Coord) -> Option<&mut T> {
-        self.grid.get_voxel_mut(pos)
+    pub fn get_value(&self, pos: &LocalCoord) -> T {
+        self.grid
+            .get_value(&self.bbox().local_to_global(pos).unwrap())
     }
 
-    fn set_voxel(&mut self, pos: &Coord, v: Option<T>) {
-        self.grid.set_voxel(pos, v);
+    pub fn get_voxel_mut(&mut self, pos: &LocalCoord) -> &mut T {
+        self.grid
+            .get_voxel_mut(&self.bbox().local_to_global(pos).unwrap())
+    }
+
+    pub fn set_voxel(&mut self, pos: &LocalCoord, v: Option<T>) {
+        self.grid
+            .set_voxel(&self.bbox().local_to_global(pos).unwrap(), v);
+    }
+
+    pub fn set_value(&mut self, pos: &LocalCoord, v: T)
+    where
+        T: PartialEq,
+    {
+        self.grid
+            .set_value(&self.bbox().local_to_global(pos).unwrap(), v);
     }
 }

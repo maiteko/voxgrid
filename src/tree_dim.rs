@@ -143,6 +143,24 @@ impl<const MAX_DEPTH: usize> TreeDim<MAX_DEPTH> {
         Self::new(&child_log_dims)
     }
 
+    /// Build a sparse voxel-tree dimension with a uniform 2x2x2 split at every
+    /// child level up to min(child_depth, MAX_DEPTH - 1)
+    ///
+    /// ```
+    /// use voxgrid::TreeDim;
+    ///
+    /// let tree: TreeDim = TreeDim::octree_with_depth(3);
+    /// assert_eq!(tree.leaf().node_level, 1);
+    /// assert_eq!(tree.root().node_level, 4);
+    /// assert_eq!(tree.leaf().voxel_length, 2); // a 2x2x2 leaf
+    /// ```
+    pub fn octree_with_depth(child_depth: usize) -> Self {
+        let child_depth = child_depth.min(MAX_DEPTH - 1);
+        let mut child_log_dims: Vec<u8> = Vec::with_capacity(child_depth);
+        child_log_dims.resize(child_depth, 1);
+        Self::new(&child_log_dims)
+    }
+
     #[inline]
     /// The [`NodeDim`] for a 1-based `node_level`, or `None` if it is `0` or above `tree_depth`.
     pub const fn get_node_level_size(&self, node_level: usize) -> Option<&NodeDim> {

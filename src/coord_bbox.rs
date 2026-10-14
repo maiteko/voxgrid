@@ -413,7 +413,7 @@ impl CoordBBox {
 
     /// Return a copy of the box grown outward on every axis by `x`.
 
-    pub fn pad_by(&self, x: i64) -> CoordBBox {
+    pub fn pad_by(&self, x: Index) -> CoordBBox {
         Self {
             min: self.min - x,
             max: self.max + x,
@@ -631,16 +631,16 @@ impl std::ops::BitOrAssign<Index> for CoordBBox {
 /// Both aliases are produced by [`CoordBBox::to_zyx_iter`] and
 /// [`CoordBBox::to_xyz_iter`] respectively.
 pub struct BoxIterator<const ZYX_ORDERING: bool> {
-    next: Option<[i64; 3]>,
-    min: [i64; 3],
-    max: [i64; 3],
+    next: Option<[Index; 3]>,
+    min: [Index; 3],
+    max: [Index; 3],
 }
 
 impl<const ZYX_ORDERING: bool> BoxIterator<ZYX_ORDERING> {
     /// Create an iterator over the coordinates spanned by `b` in this ordering.
     pub fn new(b: &CoordBBox) -> Self {
-        let mut min: [i64; 3] = b.min.into();
-        let mut max: [i64; 3] = b.max.into();
+        let mut min: [Index; 3] = b.min.into();
+        let mut max: [Index; 3] = b.max.into();
 
         if ZYX_ORDERING {
             min.reverse();
