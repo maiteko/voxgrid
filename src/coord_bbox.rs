@@ -81,7 +81,7 @@ impl CoordBBox {
     pub const fn create_cube(min: &Coord, dim: u64) -> Self {
         Self {
             min: *min,
-            max: min.single_offset_by((dim - 1) as Index),
+            max: min.single_offset_by((dim - 1) as CIndex),
         }
     }
 
@@ -108,7 +108,7 @@ impl CoordBBox {
 
     /// Reset to a cube of side length `dim` with its minimum corner at `min`.
 
-    pub fn reset_to_cube(&mut self, min: &Coord, dim: Index) {
+    pub fn reset_to_cube(&mut self, min: &Coord, dim: CIndex) {
         self.min = *min;
         self.max = min.single_offset_by(dim - 1);
     }
@@ -131,27 +131,35 @@ impl CoordBBox {
 
     /// Produce a [`ZYXIterator`] over the spanned coordinates (`x` outermost); see
     /// [`BoxIterator`].
-
     pub fn to_zyx_iter(&self) -> ZYXIterator {
         ZYXIterator::new(self)
     }
 
     /// Produce a [`XYZIterator`] over the spanned coordinates (`x` innermost); see
     /// [`BoxIterator`].
-
     pub fn to_xyz_iter(&self) -> XYZIterator {
         XYZIterator::new(self)
     }
 
     /// Alias of [`CoordBBox::to_zyx_iter`].
-
     pub fn to_iter(&self) -> ZYXIterator {
         self.to_zyx_iter()
     }
 
+    /// Produce an iterator over the coordinates spanned by this box, yielding
+    /// [`LocalCoord`] values relative to `min` (`x` innermost).
+    pub fn to_local_xyz_iter(&self) -> LocalXYZIterator {
+        LocalXYZIterator::new(self)
+    }
+
+    /// Produce an iterator over the coordinates spanned by this box, yielding
+    /// [`LocalCoord`] values relative to `min` (`z` innermost).
+    pub fn to_local_zyx_iter(&self) -> LocalZYXIterator {
+        LocalZYXIterator::new(self)
+    }
+
     /// Return the box spanning all coordinates (`min == Coord::MIN`,
     /// `max == Coord::MAX`).
-
     pub fn inf() -> Self {
         Self {
             min: Coord::MIN,
@@ -160,19 +168,16 @@ impl CoordBBox {
     }
 
     /// Return whether the box is empty, i.e. `min` is above `max` on some axis.
-
     pub fn empty(&self) -> bool {
         self.min.component_gt(&self.max)
     }
 
     /// Return whether the box is non-empty, i.e. `!empty()`.
-
     pub fn has_volume(&self) -> bool {
         !self.empty()
     }
 
     /// Return the box's center as a floating-point coordinate.
-
     pub fn get_center(&self) -> FIndexVec {
         FIndexVec::from(self.min + self.max) * 0.5
     }
@@ -256,14 +261,14 @@ impl CoordBBox {
 
     /// Grow the box outward on every axis by `padding`.
 
-    pub fn expand(&mut self, padding: Index) {
+    pub fn expand(&mut self, padding: CIndex) {
         self.min.single_offset(-padding);
         self.max.single_offset(padding);
     }
 
     /// Return a copy of the box grown outward on every axis by `padding`.
 
-    pub fn expand_by(&self, padding: Index) -> Self {
+    pub fn expand_by(&self, padding: CIndex) -> Self {
         Self {
             min: self.min.single_offset_by(-padding),
             max: self.max.single_offset_by(padding),
@@ -294,7 +299,7 @@ impl CoordBBox {
 
     /// Grow the box to include a cube of side length `dim` rooted at `min`.
 
-    pub fn expand_cube(&mut self, min: &Coord, dim: Index) {
+    pub fn expand_cube(&mut self, min: &Coord, dim: CIndex) {
         self.min = self.min.min_component(min);
         self.max = self.max.max_component(&min.single_offset_by(dim));
     }
@@ -413,7 +418,7 @@ impl CoordBBox {
 
     /// Return a copy of the box grown outward on every axis by `x`.
 
-    pub fn pad_by(&self, x: Index) -> CoordBBox {
+    pub fn pad_by(&self, x: CIndex) -> CoordBBox {
         Self {
             min: self.min - x,
             max: self.max + x,
@@ -427,17 +432,17 @@ impl CoordBBox {
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `x` axis.
-    pub fn range_x(&self) -> std::ops::RangeInclusive<Index> {
+    pub fn range_x(&self) -> std::ops::RangeInclusive<CIndex> {
         self.min.x..=self.max.x
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `y` axis.
-    pub fn range_y(&self) -> std::ops::RangeInclusive<Index> {
+    pub fn range_y(&self) -> std::ops::RangeInclusive<CIndex> {
         self.min.y..=self.max.y
     }
 
     /// Return the inclusive `RangeInclusive` over the box's `z` axis.
-    pub fn range_z(&self) -> std::ops::RangeInclusive<Index> {
+    pub fn range_z(&self) -> std::ops::RangeInclusive<CIndex> {
         self.min.z..=self.max.z
     }
 
@@ -518,7 +523,7 @@ impl CoordBBox {
             return Vec::default();
         }
 
-        (1..8 as Index)
+        (1..8 as CIndex)
             .filter_map(|mask| {
                 let coord = Coord::new(
                     if mask & 0b001 != 0 { boundary.x } else { 0 },
@@ -584,10 +589,10 @@ impl std::ops::ShlAssign<u64> for CoordBBox {
 }
 
 /// Bitwise-and both corners with `rhs`.
-impl std::ops::BitAnd<Index> for CoordBBox {
+impl std::ops::BitAnd<CIndex> for CoordBBox {
     type Output = Self;
 
-    fn bitand(self, rhs: Index) -> Self::Output {
+    fn bitand(self, rhs: CIndex) -> Self::Output {
         Self {
             min: Coord(*self.min & rhs),
             max: Coord(*self.max & rhs),
@@ -596,18 +601,18 @@ impl std::ops::BitAnd<Index> for CoordBBox {
 }
 
 /// Bitwise-and both corners in place with `rhs`.
-impl std::ops::BitAndAssign<Index> for CoordBBox {
-    fn bitand_assign(&mut self, rhs: Index) {
+impl std::ops::BitAndAssign<CIndex> for CoordBBox {
+    fn bitand_assign(&mut self, rhs: CIndex) {
         self.min &= rhs;
         self.max &= rhs;
     }
 }
 
 /// Bitwise-or both corners with `rhs`.
-impl std::ops::BitOr<Index> for CoordBBox {
+impl std::ops::BitOr<CIndex> for CoordBBox {
     type Output = Self;
 
-    fn bitor(self, rhs: Index) -> Self::Output {
+    fn bitor(self, rhs: CIndex) -> Self::Output {
         Self {
             min: Coord(*self.min | rhs),
             max: Coord(*self.max | rhs),
@@ -616,8 +621,8 @@ impl std::ops::BitOr<Index> for CoordBBox {
 }
 
 /// Bitwise-or both corners in place with `rhs`.
-impl std::ops::BitOrAssign<Index> for CoordBBox {
-    fn bitor_assign(&mut self, rhs: Index) {
+impl std::ops::BitOrAssign<CIndex> for CoordBBox {
+    fn bitor_assign(&mut self, rhs: CIndex) {
         self.min |= rhs;
         self.max |= rhs;
     }
@@ -631,16 +636,16 @@ impl std::ops::BitOrAssign<Index> for CoordBBox {
 /// Both aliases are produced by [`CoordBBox::to_zyx_iter`] and
 /// [`CoordBBox::to_xyz_iter`] respectively.
 pub struct BoxIterator<const ZYX_ORDERING: bool> {
-    next: Option<[Index; 3]>,
-    min: [Index; 3],
-    max: [Index; 3],
+    next: Option<[CIndex; 3]>,
+    min: [CIndex; 3],
+    max: [CIndex; 3],
 }
 
 impl<const ZYX_ORDERING: bool> BoxIterator<ZYX_ORDERING> {
     /// Create an iterator over the coordinates spanned by `b` in this ordering.
     pub fn new(b: &CoordBBox) -> Self {
-        let mut min: [Index; 3] = b.min.into();
-        let mut max: [Index; 3] = b.max.into();
+        let mut min: [CIndex; 3] = b.min.into();
+        let mut max: [CIndex; 3] = b.max.into();
 
         if ZYX_ORDERING {
             min.reverse();
@@ -693,6 +698,87 @@ impl<const ZYX_ORDERING: bool> Iterator for BoxIterator<ZYX_ORDERING> {
 
 pub type XYZIterator = BoxIterator<false>;
 pub type ZYXIterator = BoxIterator<true>;
+
+/// Like [`BoxIterator`], but yields [`LocalCoord`] values relative to the box's
+/// `min` corner instead of global [`Coord`] values.
+pub struct LocalBoxIterator<const ZYX_ORDERING: bool> {
+    next: Option<[CIndex; 3]>,
+    min: [CIndex; 3],
+    max: [CIndex; 3],
+}
+
+impl<const ZYX_ORDERING: bool> LocalBoxIterator<ZYX_ORDERING> {
+    /// Create an iterator over the local coordinates spanned by `b` in the given
+    /// ordering, yielding [`LocalCoord`] values relative to `b.min`.
+    pub fn new(b: &CoordBBox) -> Self {
+        let mut min: [CIndex; 3] = b.min.into();
+        let mut max: [CIndex; 3] = b.max.into();
+
+        if ZYX_ORDERING {
+            min.reverse();
+            max.reverse();
+        }
+
+        let next = Some(min);
+
+        Self { next, min, max }
+    }
+
+    /// Returns the next local coordinate, or `None` when exhausted.
+    pub fn next(&mut self) -> Option<LocalCoord> {
+        let current = self.next?;
+
+        let mut coords = current;
+
+        for i in 0..3 {
+            coords[i] += 1;
+
+            if coords[i] <= self.max[i] {
+                break;
+            }
+
+            if i != 2 {
+                coords[i] = self.min[i];
+            }
+        }
+
+        self.next = if coords[2] > self.max[2] {
+            None
+        } else {
+            Some(coords)
+        };
+
+        // Local = global - min, computed in the iterator's internal ordering.
+        let local = [
+            current[0] - self.min[0],
+            current[1] - self.min[1],
+            current[2] - self.min[2],
+        ];
+
+        let local = if ZYX_ORDERING {
+            [local[2], local[1], local[0]]
+        } else {
+            local
+        };
+
+        Some(LocalCoord::new(
+            local[0] as UIndex,
+            local[1] as UIndex,
+            local[2] as UIndex,
+        ))
+    }
+}
+
+impl<const ZYX_ORDERING: bool> Iterator for LocalBoxIterator<ZYX_ORDERING> {
+    type Item = LocalCoord;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Self::next(self)
+    }
+}
+
+pub type LocalXYZIterator = LocalBoxIterator<false>;
+pub type LocalZYXIterator = LocalBoxIterator<true>;
 
 #[cfg(test)]
 mod test {
@@ -780,7 +866,7 @@ mod test {
     fn test_coord_bbox_reset_to_cube() {
         let mut bbox = CoordBBox::default();
         let min = Coord::new(0, 0, 0);
-        let dim: Index = 5;
+        let dim: CIndex = 5;
 
         bbox.reset_to_cube(&min, dim);
         assert_eq!(bbox.min, min);
@@ -955,7 +1041,7 @@ mod test {
     fn test_coord_bbox_expand_cube() {
         let mut bbox = CoordBBox::new(Coord::new(5, 5, 5), Coord::new(10, 10, 10));
         let min = Coord::new(0, 0, 0);
-        let dim: Index = 3;
+        let dim: CIndex = 3;
 
         bbox.expand_cube(&min, dim);
         assert_eq!(bbox.min, Coord::new(0, 0, 0));

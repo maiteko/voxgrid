@@ -102,21 +102,21 @@ impl Deref for Coord {
 impl Coord {
     /// The smallest representable coordinate: every component at the index type's minimum.
     pub const MIN: Self = Self(IndexVec {
-        x: Index::MIN,
-        y: Index::MIN,
-        z: Index::MIN,
+        x: CIndex::MIN,
+        y: CIndex::MIN,
+        z: CIndex::MIN,
     });
     /// The largest representable coordinate: every component at the index type's maximum.
     pub const MAX: Self = Self(IndexVec {
-        x: Index::MAX,
-        y: Index::MAX,
-        z: Index::MAX,
+        x: CIndex::MAX,
+        y: CIndex::MAX,
+        z: CIndex::MAX,
     });
     /// The grid origin, `(0, 0, 0)`.
     pub const ORIGIN: Self = Self(IndexVec { x: 0, y: 0, z: 0 });
 
     /// Construct a [`Coord`] from its three index components.
-    pub const fn new(x: Index, y: Index, z: Index) -> Self {
+    pub const fn new(x: CIndex, y: CIndex, z: CIndex) -> Self {
         Self(IndexVec { x, y, z })
     }
 
@@ -147,13 +147,13 @@ impl Coord {
 
     #[cfg(feature = "bytemuck")]
     /// Views the coordinate's fields as a slice of index values. Requires the `bytemuck` feature.
-    pub fn as_slice(&self) -> &[Index] {
+    pub fn as_slice(&self) -> &[CIndex] {
         bytemuck::cast_slice(self.bytes_of())
     }
 
     #[cfg(feature = "bytemuck")]
     /// Views the coordinate's fields as a mutable slice of index values. Requires the `bytemuck` feature.
-    pub fn as_slice_mut(&mut self) -> &mut [Index] {
+    pub fn as_slice_mut(&mut self) -> &mut [CIndex] {
         bytemuck::cast_slice_mut(self.bytes_of_mut())
     }
 
@@ -164,7 +164,7 @@ impl Coord {
     }
 
     /// Returns the components as a three-element index array.
-    pub fn as_array(&self) -> [Index; 3] {
+    pub fn as_array(&self) -> [CIndex; 3] {
         [self.x, self.y, self.z]
     }
 
@@ -174,7 +174,7 @@ impl Coord {
     }
 
     /// Offsets this coordinate in place by the per-axis deltas `(dx, dy, dz)`, returning `&mut self` for chaining.
-    pub const fn offset(&mut self, dx: Index, dy: Index, dz: Index) -> &mut Self {
+    pub const fn offset(&mut self, dx: CIndex, dy: CIndex, dz: CIndex) -> &mut Self {
         self.0.x += dx;
         self.0.y += dy;
         self.0.z += dz;
@@ -183,17 +183,17 @@ impl Coord {
     }
 
     /// Offsets this coordinate in place by `n` on every axis, returning `&mut self` for chaining.
-    pub const fn single_offset(&mut self, n: Index) -> &mut Self {
+    pub const fn single_offset(&mut self, n: CIndex) -> &mut Self {
         self.offset(n, n, n)
     }
 
     /// Returns a new [`Coord`] offset by the per-axis deltas `(dx, dy, dz)`.
-    pub const fn offset_by(&self, dx: Index, dy: Index, dz: Index) -> Self {
+    pub const fn offset_by(&self, dx: CIndex, dy: CIndex, dz: CIndex) -> Self {
         Self::new(self.0.x + dx, self.0.y + dy, self.0.z + dz)
     }
 
     /// Returns a new [`Coord`] offset by `n` on every axis.
-    pub const fn single_offset_by(&self, n: Index) -> Self {
+    pub const fn single_offset_by(&self, n: CIndex) -> Self {
         self.offset_by(n, n, n)
     }
 
@@ -296,9 +296,9 @@ impl Coord {
     /// Returns a coordinate that is `1` on each axis where this and `other` agree and `0` otherwise.
     pub fn match_axes(&self, other: &Coord) -> Coord {
         Self::new(
-            (self.x == other.x) as Index,
-            (self.y == other.y) as Index,
-            (self.z == other.z) as Index,
+            (self.x == other.x) as CIndex,
+            (self.y == other.y) as CIndex,
+            (self.z == other.z) as CIndex,
         )
     }
 
@@ -415,7 +415,7 @@ impl std::ops::Neg for Coord {
 add_glam_float_type!(Coord, glam::Vec3, f32, glam::DVec3, f64);
 add_glam_int_type!(
     Coord,
-    Index,
+    CIndex,
     glam::I8Vec3,
     i8,
     glam::I16Vec3,
@@ -434,10 +434,10 @@ add_glam_int_type!(
     u64
 );
 add_int_conversions!(
-    Coord, Index, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
+    Coord, CIndex, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
 );
 add_int_ops!(
-    Coord, Index, to_i64, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
+    Coord, CIndex, to_i64, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize
 );
 add_float_conversions!(Coord, f32, f64);
 add_float_ops!(Coord, f32, f64);
@@ -462,12 +462,12 @@ mod tests {
         assert_eq!(Coord::ORIGIN.z, 0);
 
         // Test MIN and MAX constants
-        assert_eq!(Coord::MIN.x, Index::MIN);
-        assert_eq!(Coord::MIN.y, Index::MIN);
-        assert_eq!(Coord::MIN.z, Index::MIN);
-        assert_eq!(Coord::MAX.x, Index::MAX);
-        assert_eq!(Coord::MAX.y, Index::MAX);
-        assert_eq!(Coord::MAX.z, Index::MAX);
+        assert_eq!(Coord::MIN.x, CIndex::MIN);
+        assert_eq!(Coord::MIN.y, CIndex::MIN);
+        assert_eq!(Coord::MIN.z, CIndex::MIN);
+        assert_eq!(Coord::MAX.x, CIndex::MAX);
+        assert_eq!(Coord::MAX.y, CIndex::MAX);
+        assert_eq!(Coord::MAX.z, CIndex::MAX);
     }
 
     #[test]
@@ -751,7 +751,7 @@ mod tests {
     // ============== Conversion Tests ==============
     #[test]
     fn test_coord_from_index_tuple() {
-        let tuple: (Index, Index, Index) = (5, 10, 15);
+        let tuple: (CIndex, CIndex, CIndex) = (5, 10, 15);
         let coord: Coord = tuple.into();
 
         assert_eq!(coord.x, 5);
@@ -762,7 +762,7 @@ mod tests {
     #[test]
     fn test_coord_to_index_tuple() {
         let coord = Coord::new(5, 10, 15);
-        let tuple: (Index, Index, Index) = coord.into();
+        let tuple: (CIndex, CIndex, CIndex) = coord.into();
 
         assert_eq!(tuple.0, 5);
         assert_eq!(tuple.1, 10);

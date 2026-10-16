@@ -348,7 +348,7 @@ impl NodeDim {
         if self.is_sparse {
             Coord::ORIGIN
         } else {
-            (**pos & !(((1 as Index) << self.total_dim) - 1) as Index).into()
+            (**pos & !(((1 as CIndex) << self.total_dim) - 1) as CIndex).into()
         }
     }
 
@@ -389,7 +389,7 @@ impl NodeDim {
 
             CoordBBox {
                 min: pos,
-                max: pos.single_offset_by((self.voxel_length - 1) as Index),
+                max: pos.single_offset_by((self.voxel_length - 1) as CIndex),
             }
         }
     }
@@ -399,7 +399,7 @@ impl NodeDim {
     pub fn local_bbox(&self) -> CoordBBox {
         CoordBBox::new(
             Coord::ORIGIN,
-            Coord::ORIGIN.single_offset_by((self.child_length - 1) as Index),
+            Coord::ORIGIN.single_offset_by((self.child_length - 1) as CIndex),
         )
     }
 
@@ -456,7 +456,7 @@ impl NodeDim {
         }
         use crate::cube::SIDE_NORMALS;
 
-        let voxel_length = self.voxel_length as Index;
+        let voxel_length = self.voxel_length as CIndex;
 
         for side_normal in SIDE_NORMALS {
             let offset: Coord = [

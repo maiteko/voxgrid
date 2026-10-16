@@ -807,7 +807,7 @@ pub const OPPOSITE_SIDE: [Side; SIDE_COUNT] = [
 
 #[cfg(test)]
 mod tests {
-    use crate::Index;
+    use crate::CIndex;
 
     use super::*;
 
@@ -857,7 +857,7 @@ mod tests {
 
     #[test]
     fn corner_names_match_offsets() {
-        // index = x + 2*y + 4*z, with North = +z, South = -z.
+        // CIndex = x + 2*y + 4*z, with North = +z, South = -z.
         let cases = [
             (Corner::SouthWestDown, (0, 0, 0)),
             (Corner::SouthEastDown, (1, 0, 0)),
@@ -987,7 +987,7 @@ mod tests {
                     _ => en.z,
                 };
                 assert_eq!(
-                    comp as Index, sign,
+                    comp as CIndex, sign,
                     "edge {:?} of {:?} should have outward normal component",
                     e, side,
                 );
@@ -1060,9 +1060,9 @@ mod tests {
         );
         for i in 0..27 {
             // z-outer, y-middle, x-inner: index = 9*(z+1) + 3*(y+1) + (x+1).
-            let z = (i / 9) as Index - 1;
-            let y = (i % 9) as Index / 3 - 1;
-            let x = (i % 3) as Index - 1;
+            let z = (i / 9) as CIndex - 1;
+            let y = (i % 9) as CIndex / 3 - 1;
+            let x = (i % 3) as CIndex - 1;
             assert_eq!(
                 area[i].n_offset,
                 Coord::new(x, y, z),

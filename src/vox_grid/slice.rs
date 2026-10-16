@@ -43,6 +43,8 @@ where
         self.grid.get_voxel(&self.bbox().local_to_global(pos).ok()?)
     }
 
+    /// Returns the value at `pos`. If empty it returns the background value.
+    /// panics if `pos` is outside of the slice.
     pub fn get_value(&self, pos: &LocalCoord) -> T {
         self.grid
             .get_value(&self.bbox().local_to_global(pos).unwrap())
