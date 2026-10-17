@@ -19,8 +19,9 @@ itself a voxel data structure.
   enumeration, and overlap queries.
 - [`cube`] — static lookup tables over a unit cube's 8 corners, 12 edges, 6
   faces, and 3×3×3 Moore neighborhood, for voxel and mesh generation.
-- [`vox_grid`] — collection of traits defining an interface into sparse and local grids.
-- [`quantized`] — hashable, integer-backed float storage (**unstable**).
+- [`vox_grid`] — read/write/background/slice traits for sparse and local grids:
+  [`VoxGrid`] (read), [`VoxGridMut`] (write), [`VoxGridBackground`] (background
+  value), and [`VoxGridSlice`] / [`VoxGridSliceMut`] (shared views).
 
 ## Index type
 
@@ -34,8 +35,7 @@ using 128 bit types for float/length. An `f32` doesn't have the precision to ful
 |-------------|:-------:|--------|
 | *(none)*    |   ✓     | N/A |
 | `serde`     |         | Derive `Serialize`/`Deserialize` on the public types. |
-| `bytemuck`  |         | Derive `Pod`/`Zeroable` and enable byte-slice conversions. |
-| `voxelis`   |         | Defines voxelis traits for voxgrid and vice/versa |
+| `bytemuck`   |          | Derive `Pod`/`Zeroable` and enable byte-slice conversions. |
 
 ## Building & testing
 
