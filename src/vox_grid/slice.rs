@@ -34,9 +34,14 @@ where
         &self.bbox
     }
 
-    /// Create a new read reference with bbox size modified by padding
-    pub fn pad(&self, padding: i32) -> Self {
-        Self::new(self.grid, self.bbox.expand_by(padding))
+    /// expand the contained bbox
+    pub fn expand(&mut self, padding: i32) {
+        self.bbox.expand(padding)
+    }
+
+    /// expand the contained bbox
+    pub fn pad(&mut self, padding: i32) {
+        self.expand(padding);
     }
 
     pub fn get_voxel(&self, pos: &LocalCoord) -> Option<T> {
@@ -78,9 +83,14 @@ where
         &self.bbox
     }
 
-    /// Pads bbox in place
+    /// expand the contained bbox
+    pub fn expand(&mut self, padding: i32) {
+        self.bbox.expand(padding)
+    }
+
+    /// expand the contained bbox
     pub fn pad(&mut self, padding: i32) {
-        self.bbox.expand(padding);
+        self.expand(padding);
     }
 
     pub fn get_voxel(&self, pos: &LocalCoord) -> Option<T> {

@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 /// [`CoordBBox::enclose_point`] / [`CoordBBox::enclose_bbox`] to grow it from
 /// nothing. An empty box reports `empty() == true` and `volume() == 0`.
 ///
-/// Global↔local conversion is relative to the box's `min` corner and returns a
+/// Global<->local conversion is relative to the box's `min` corner and returns a
 /// [`Result`], erroring when the coordinate lies outside the box:
 ///
 /// ```
@@ -66,18 +66,17 @@ impl Default for CoordBBox {
 }
 
 impl CoordBBox {
+    /// Produces a bbox covering the entire i32 range.
     pub const SPARSE: Self = CoordBBox::new(Coord::MIN, Coord::MAX);
 
     /// Construct a box from its inclusive `min` and `max` corners, stored as given
     /// without reordering.
-
     pub const fn new(min: Coord, max: Coord) -> Self {
         Self { min, max }
     }
 
     /// Create an axis-aligned cube of side length `dim` with its minimum corner at
     /// `min`.
-
     pub const fn create_cube(min: &Coord, dim: u64) -> Self {
         Self {
             min: *min,
@@ -86,28 +85,24 @@ impl CoordBBox {
     }
 
     /// Create a box centered on `center`, extending `semi_dim` along each axis.
-
     pub fn create_centered_box(center: Coord, semi_dim: Coord) -> Self {
         CoordBBox::new(center - semi_dim, center + semi_dim)
     }
 
     /// Reset to the empty box (`min == Coord::MAX`, `max == Coord::MIN`), the same
     /// state as [`Default`].
-
     pub const fn reset(&mut self) {
         self.min = Coord::MAX;
         self.max = Coord::MIN;
     }
 
     /// Set both corners from the given coordinates.
-
     pub fn reset_with(&mut self, min: &Coord, max: &Coord) {
         self.min = *min;
         self.max = *max;
     }
 
     /// Reset to a cube of side length `dim` with its minimum corner at `min`.
-
     pub fn reset_to_cube(&mut self, min: &Coord, dim: CIndex) {
         self.min = *min;
         self.max = min.single_offset_by(dim - 1);
@@ -124,7 +119,6 @@ impl CoordBBox {
     }
 
     /// Return the exclusive end corner, `max + 1`.
-
     pub fn get_end(&self) -> Coord {
         self.max.single_offset_by(1)
     }
@@ -156,15 +150,6 @@ impl CoordBBox {
     /// [`LocalCoord`] values relative to `min` (`z` innermost).
     pub fn to_local_zyx_iter(&self) -> LocalZYXIterator {
         LocalZYXIterator::new(self)
-    }
-
-    /// Return the box spanning all coordinates (`min == Coord::MIN`,
-    /// `max == Coord::MAX`).
-    pub fn inf() -> Self {
-        Self {
-            min: Coord::MIN,
-            max: Coord::MAX,
-        }
     }
 
     /// Return whether the box is empty, i.e. `min` is above `max` on some axis.
@@ -204,7 +189,6 @@ impl CoordBBox {
 
     /// Return whether the box has positive extent on some axis and can be split
     /// (equivalent to `!min.component_ge(max)`).
-
     pub fn is_divisible(&self) -> bool {
         !self.min.component_ge(&self.max)
     }
@@ -233,16 +217,17 @@ impl CoordBBox {
         panic!("should never reach here")
     }
 
+    /// Returns the length of the smallest dimension
     pub fn min_length(&self) -> u64 {
         self.axis_dims().min_element() as u64
     }
 
+    /// returns the length of the largest dimension
     pub fn max_length(&self) -> u64 {
         self.axis_dims().min_element() as u64
     }
 
     /// Return whether `xyz` lies inside the box, inclusive of the boundary.
-
     pub fn coord_is_inside(&self, xyz: &Coord) -> bool {
         !(xyz.component_lt(&self.min) || self.max.component_lt(xyz))
     }
@@ -254,20 +239,17 @@ impl CoordBBox {
     }
 
     /// Return whether this box and `b` share any coordinate.
-
     pub fn has_overlap(&self, b: &CoordBBox) -> bool {
         !(self.max.component_lt(&b.min) || b.max.component_lt(&self.min))
     }
 
     /// Grow the box outward on every axis by `padding`.
-
     pub fn expand(&mut self, padding: CIndex) {
         self.min.single_offset(-padding);
         self.max.single_offset(padding);
     }
 
     /// Return a copy of the box grown outward on every axis by `padding`.
-
     pub fn expand_by(&self, padding: CIndex) -> Self {
         Self {
             min: self.min.single_offset_by(-padding),
@@ -275,15 +257,23 @@ impl CoordBBox {
         }
     }
 
-    /// Grow the box to include `xyz`.
+    /// Alias to [`CoordBBox::expand`]
+    pub fn pad(&mut self, padding: CIndex) {
+        self.expand(padding);
+    }
 
+    /// Alias to [`CoordBBox::expand_by`]
+    pub fn pad_by(&self, padding: CIndex) -> CoordBBox {
+        self.expand_by(padding)
+    }
+
+    /// Grow the box to include `xyz`.
     pub fn enclose_point(&mut self, xyz: &Coord) {
         self.min = self.min.min_component(xyz);
         self.max = self.max.max_component(xyz);
     }
 
     /// Grow the box to include `b`.
-
     pub fn enclose_bbox(&mut self, b: &CoordBBox) {
         self.min = self.min.min_component(&b.min);
         self.max = self.max.max_component(&b.max);
@@ -291,21 +281,18 @@ impl CoordBBox {
 
     /// Shrink the box to its overlap with `b`, leaving the empty box if they do not
     /// overlap.
-
     pub fn intersect(&mut self, b: &CoordBBox) {
         self.min = self.min.max_component(&b.min);
         self.max = self.max.min_component(&b.max);
     }
 
     /// Grow the box to include a cube of side length `dim` rooted at `min`.
-
     pub fn expand_cube(&mut self, min: &Coord, dim: CIndex) {
         self.min = self.min.min_component(min);
         self.max = self.max.max_component(&min.single_offset_by(dim));
     }
 
     /// Move the box by the offset `t`.
-
     pub fn translate(&mut self, t: &Coord) {
         self.min += *t;
         self.max += *t;
@@ -313,7 +300,6 @@ impl CoordBBox {
 
     /// Translate the box so its `min` corner lands on `min`, shifting `max` by the
     /// same delta.
-
     pub fn move_min(&mut self, min: &Coord) {
         self.max += *min - self.min;
         self.min = *min;
@@ -416,15 +402,6 @@ impl CoordBBox {
         self.min.any_match(&bbox.min) || self.max.any_match(&bbox.max)
     }
 
-    /// Return a copy of the box grown outward on every axis by `x`.
-
-    pub fn pad_by(&self, x: CIndex) -> CoordBBox {
-        Self {
-            min: self.min - x,
-            max: self.max + x,
-        }
-    }
-
     /// Return the box's integer center, `min` and `max` averaged with integer
     /// division.
     pub fn center(&self) -> Coord {
@@ -475,29 +452,23 @@ impl CoordBBox {
         -self.min.match_axes(coord) + self.max.match_axes(coord)
     }
 
-    /// Returns all non-zero combinations of the supplied boundary direction.
+    /// Returns an offset for all neighbors (Face, Edge, and Corner) of `pos`
+    /// that sit across a boundary line of bbox. ie. if `pos == bbox.max` then
+    /// it will return:
     ///
-    /// Each component in `boundary` must be `-1`, `0`, or `1`, as returned by
-    /// [`CoordBBox::boundary_direction`]. A zero component is omitted from every
-    /// generated direction. Non-zero components may either be included or
-    /// omitted, producing every combination of touching boundary directions.
-    ///
-    /// For example, `[1, 1, 1]` produces:
-    ///
-    /// ```text
-    /// [0, 0, 1]
-    /// [0, 1, 0]
-    /// [0, 1, 1]
-    /// [1, 0, 0]
-    /// [1, 0, 1]
-    /// [1, 1, 0]
-    /// [1, 1, 1]
+    /// ```
+    /// vec![
+    ///     [0, 0, 1]
+    ///     [0, 1, 0]
+    ///     [0, 1, 1]
+    ///     [1, 0, 0]
+    ///     [1, 0, 1]
+    ///     [1, 1, 0]
+    ///     [1, 1, 1]
+    /// ];
     /// ```
     ///
-    /// The zero direction `[0, 0, 0]` is not included.
-    ///
-    /// If `boundary` has `n` non-zero components, this returns `2^n - 1`
-    /// directions.
+    /// If `pos` does not sit on a boundary, it returns an empty Vec.
     ///
     /// # Examples
     ///
@@ -1107,14 +1078,6 @@ mod test {
 
         let result = bbox.get_corner_points(&mut buffer);
         assert!(result.is_err());
-    }
-
-    // ============== Infinity BBox Tests ==============
-    #[test]
-    fn test_coord_bbox_inf() {
-        let inf_bbox = CoordBBox::inf();
-        assert_eq!(inf_bbox.min, Coord::MIN);
-        assert_eq!(inf_bbox.max, Coord::MAX);
     }
 
     // ============== Iterator Tests ==============

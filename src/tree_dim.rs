@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn test_voxel_bbox_sparse_is_infinite() {
         let n = NodeDim::sparse(1, 2, 3);
-        assert_eq!(n.voxel_bbox(&Coord::new(1, 2, 3)), CoordBBox::inf());
+        assert_eq!(n.voxel_bbox(&Coord::new(1, 2, 3)), CoordBBox::SPARSE);
     }
 
     #[test]
