@@ -14,8 +14,8 @@
 //! Coord is opinionated when it comes to conversions to properly align to the grid:
 //!
 //! Float conversions/operators convert to f64, then uses round_half_up
-//! on the result. Rounding away from zero (standard rust round) can cause inconsistent indexing
-//! around origin:
+//! on the result, rather than rounding away from zero (standard rust round), which
+//! can cause inconsistent indexing distances around origin:
 //!
 //! .round():
 //!

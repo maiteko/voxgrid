@@ -4,6 +4,7 @@ mod slice;
 
 pub use slice::{VoxGridSlice, VoxGridSliceMut};
 
+/// Trait for providing a background value when a voxel position is empty
 pub trait VoxGridBackground<T> {
     fn background_value(&self) -> T;
 }

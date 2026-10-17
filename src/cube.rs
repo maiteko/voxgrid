@@ -43,8 +43,8 @@
 
 #![doc = include_str!("../docs/cube_tables.md")]
 
-use crate::Coord;
-use glam::{U8Vec2, Vec3};
+use crate::{Coord, FIndex, FIndexVec};
+use glam::U8Vec2;
 use lazy_static::lazy_static;
 use num_enum::IntoPrimitive;
 use std::{panic, slice::Iter};
@@ -102,7 +102,7 @@ impl Side {
     }
 
     /// Returns the tangent-frame 4-vector for this side.
-    pub fn get_tangent(&self) -> [f32; 4] {
+    pub fn get_tangent(&self) -> [FIndex; 4] {
         SIDE_TANGENTS[*self as usize]
     }
 
@@ -117,7 +117,7 @@ impl Side {
     }
 
     /// Returns the distance to a face-adjacent neighbor for this side.
-    pub fn get_neighboring_distance(&self) -> f32 {
+    pub fn get_neighboring_distance(&self) -> FIndex {
         SIDE_NEIGHBORING_DISTANCES[*self as usize]
     }
 
@@ -204,7 +204,7 @@ impl Edge {
     }
 
     /// Returns the outward-facing normal for this edge.
-    pub fn get_normal(&self) -> Vec3 {
+    pub fn get_normal(&self) -> FIndexVec {
         EDGE_NORMALS[*self as usize]
     }
 
@@ -258,12 +258,12 @@ const VALID_CORNERS: [Corner; CORNER_COUNT] = [
 
 impl Corner {
     /// Returns the corner's local-space offset.
-    pub fn get_offset(&self) -> Vec3 {
+    pub fn get_offset(&self) -> FIndexVec {
         CORNER_OFFSETS[*self as usize]
     }
 
     /// Returns the outward-facing normal for this corner.
-    pub fn get_normal(&self) -> Vec3 {
+    pub fn get_normal(&self) -> FIndexVec {
         CORNER_NORMALS[*self as usize]
     }
 
@@ -496,14 +496,14 @@ lazy_static! {
     ///   2: (0, 1, 0)    3: (1, 1, 0)
     ///   4: (0, 0, 1)    5: (1, 0, 1)
     ///   6: (0, 1, 1)    7: (1, 1, 1)
-    pub static ref CORNER_OFFSETS: [Vec3; CORNER_COUNT] = {
-        let mut corners = Vec::<Vec3>::with_capacity(CORNER_COUNT);
+    pub static ref CORNER_OFFSETS: [FIndexVec; CORNER_COUNT] = {
+        let mut corners = Vec::<FIndexVec>::with_capacity(CORNER_COUNT);
 
         // z outermost, y middle, x innermost -> index = x + 2*y + 4*z
         for z in 0..2 {
             for y in 0..2 {
                 for x in 0..2 {
-                    corners.push(Vec3 { x: x as f32, y: y as f32, z: z as f32 })
+                    corners.push(FIndexVec { x: x as FIndex, y: y as FIndex, z: z as FIndex })
                 }
             }
         }
@@ -512,8 +512,8 @@ lazy_static! {
     };
 
     /// Builds a table of edge normals pointing away from the cube
-    pub static ref EDGE_NORMALS: [Vec3; EDGE_COUNT] = {
-        let mut normals = Vec::<Vec3>::with_capacity(EDGE_COUNT);
+    pub static ref EDGE_NORMALS: [FIndexVec; EDGE_COUNT] = {
+        let mut normals = Vec::<FIndexVec>::with_capacity(EDGE_COUNT);
 
         for edge in *EDGES {
             let ca = CORNER_OFFSETS[edge.x as usize];
@@ -530,7 +530,7 @@ lazy_static! {
             let ny = if dy != 0. { 0. } else { if ca.y == 0. { -1. } else { 1. } };
             let nz = if dz != 0. { 0. } else { if ca.z == 0. { -1. } else { 1. } };
 
-            normals.push(Vec3 { x: nx as f32, y: ny as f32, z: nz as f32})
+            normals.push(FIndexVec { x: nx as FIndex, y: ny as FIndex, z: nz as FIndex})
         }
 
         normals.try_into().unwrap()
@@ -538,8 +538,8 @@ lazy_static! {
 
 
     /// Normals of corner pointing away from centroid
-    pub static ref CORNER_NORMALS: [Vec3; CORNER_COUNT] = {
-        let mut normals = Vec::<Vec3>::with_capacity(CORNER_COUNT);
+    pub static ref CORNER_NORMALS: [FIndexVec; CORNER_COUNT] = {
+        let mut normals = Vec::<FIndexVec>::with_capacity(CORNER_COUNT);
 
         for corner in *CORNER_OFFSETS {
 
@@ -547,7 +547,7 @@ lazy_static! {
             let ny = if corner.y == 0. { -1 } else { 1 };
             let nz = if corner.z == 0. { -1 } else { 1 };
 
-            normals.push(Vec3 { x: nx as f32, y: ny as f32, z: nz as f32})
+            normals.push(FIndexVec { x: nx as FIndex, y: ny as FIndex, z: nz as FIndex})
         }
 
         normals.try_into().unwrap()
@@ -651,7 +651,7 @@ pub const SIDE_NORMALS: [Coord; SIDE_COUNT] = [
 
 /// A tangent-frame 4-vector per `Side`: the first three components give the
 /// tangent direction for that face; the fourth is a constant `1.0`.
-pub const SIDE_TANGENTS: [[f32; 4]; SIDE_COUNT] = [
+pub const SIDE_TANGENTS: [[FIndex; 4]; SIDE_COUNT] = [
     // East   (+1,0,0): tangent along -z
     [0.0, 0.0, -1.0, 1.0],
     // West   (-1,0,0): tangent along +z
@@ -780,19 +780,19 @@ pub const SIDE_EDGES: [[Edge; 4]; SIDE_COUNT] = [
 
 /// The distance to a face-adjacent neighbor for each `Side` (`1.0` on a unit
 /// voxel grid).
-pub const SIDE_NEIGHBORING_DISTANCES: [f32; SIDE_COUNT] = [1.0; SIDE_COUNT];
+pub const SIDE_NEIGHBORING_DISTANCES: [FIndex; SIDE_COUNT] = [1.0; SIDE_COUNT];
 
 /// The two triangles making up each face, as indices into `SIDE_CORNERS`, in the
 /// same order as `Cube::g_side_quad_triangles`: `{0, 2, 1, 0, 3, 2}`. The
 /// connectivity is identical for every face, so a single array is shared.
 ///
 /// The winding puts the face seam along the `(c2, c3)` / `(c0, c1)` diagonal.
-pub const SIDE_TRIANGLES: [u32; 6] = [0, 2, 1, 0, 3, 2];
+pub const SIDE_TRIANGLES: [usize; 6] = [0, 2, 1, 0, 3, 2];
 
 /// The same two triangles as `SIDE_TRIANGLES` but with the winding reversed,
 /// so the face seam runs along the `(c1, c2)` / `(c0, c3)` diagonal instead.
 /// Use this when a face's UV seam should sit on the other diagonal.
-pub const SIDE_TRIANGLES_FLIPPED: [u32; 6] = [0, 1, 2, 0, 3, 2];
+pub const SIDE_TRIANGLES_FLIPPED: [usize; 6] = [0, 1, 2, 0, 3, 2];
 
 /// For each `Side`, the index (in `Side` order) of the opposite face. Mirrors
 /// `Cube::g_opposite_side`: `East`↔`West`, `Down`↔`Up`, `South`↔`North`.

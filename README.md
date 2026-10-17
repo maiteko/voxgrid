@@ -5,6 +5,20 @@ trees, following the [OpenVDB](https://github.com/AcademySoftwareFoundation/Open
 model. VoxGrid is a collection of utility types and lookup tables — it is **not**
 itself a voxel data structure.
 
+While initially based on OpenVDB's log indexing, it differs in a couple of key ways:
+
+- Local indexing has a distinct type (`LocalCoord`) based on `u32`, this allows local indexing
+  to work across the entire `Coord/i32` range. At the sparse root node 
+  `LocalCoord::ORIGIN/MIN == Coord::MIN`, `LocalCoord::MAX == Coord::MAX`, and
+  `(LocalCoord::MAX / 2 + 1) == Coord::ORIGIN`.
+- Indexing for specific NodeLevels are defined through `TreeDim`, pulling it out
+  of specific node implementations, and avoiding some of the const generic limitations
+  of stable rust. Where possible `TreeDim` is const compatible to provide the same benefits
+  as OpenVDB's Template implementation.
+- Arbitrary local to global indexing through `CoordBBox`, allowing `TreeDim` to be bypassed for
+  indexing several cases. 
+
+
 ## Types
 
 - [`Coord`] — a signed 3D integer coordinate (a `glam` newtype) with the
@@ -25,8 +39,8 @@ itself a voxel data structure.
 
 ## Index type
 
-Coordinates are in `i32`/`u32`/`f64`, matching Voxelis and Godot. This is a hard limit outside
-using 128 bit types for float/length. An `f32` doesn't have the precision to fully index the i32 coordinates. Similarly, `i64`/`u64` can't be indexed properly at the root level, because a `usize` cannot contain the full length (off by one). 
+Index Coordinates are in `i32`/`u32`. In order to have the precision to cover the entire 
+32-bit range/size Vertex Coordinates are `f64` and size values are `u64`.
 
 
 ## Feature flags
@@ -51,7 +65,3 @@ This crate is being pulled out of a larger project and refactored to stand
 alone. `Coord` and `CoordBBox` are close to feature complete; the rest of the
 API is still being cleaned up.
 
-Planned:
-
-- SDF interactions and integration with `sdfu`.
-- Integrations with various other libraries.
