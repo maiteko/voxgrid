@@ -5,30 +5,47 @@ trees, following the [OpenVDB](https://github.com/AcademySoftwareFoundation/Open
 model. VoxGrid is a collection of utility types and lookup tables — it is **not**
 itself a voxel data structure.
 
+While initially based on OpenVDB's log indexing, it differs in a few key ways:
+
+- Local indexing has a distinct type ([`LocalCoord`]) based on `u32`, this allows local indexing
+  to work across the entire `Coord/i32` range, including at the sparse root node. At root: 
+  `LocalCoord::ORIGIN/MIN == Coord::MIN`, `LocalCoord::MAX == Coord::MAX`, and
+  `(LocalCoord::MAX / 2 + 1) == Coord::ORIGIN`.
+- The [`LocalCoord`] also allows for local indexing into a [`CoordBBox`] of an arbitrary size,
+  supporting up to `CoordBBox::new(Coord::MIN, Coord::MAX)` with `bbox.local_to_global/global_to_local`
+- Indexing for specific [`NodeLevels`](NodeLevel) are defined through [`TreeDim`], pulling it out
+  of specific node implementations, and avoiding some of the `const generic` limitations
+  of stable rust. Where possible [`TreeDim`] and [`NodeLevel`] are const compatible to provide similar benefits
+  to OpenVDB's Template implementation.
+
+
+
 ## Types
 
 - [`Coord`] — a signed 3D integer coordinate (a `glam` newtype) with the
   arithmetic, comparison, and `From`/operator conversions a voxel tree needs.
-  Floats convert through `round_half_up`, which snaps `.5` away from zero so
-  indexing stays consistent around the origin.
-- [`LocalCoord`] — its unsigned counterpart: a pure index into a local frame
+- [`LocalCoord`] — [`Coord's`](Coord) unsigned counterpart: a pure index into a local frame
   (a [`NodeLevel`] child/voxel grid or a [`CoordBBox`]). It carries no meaning
-  on its own and never converts to or from floating-point types.
+  without a frame of reference (`CoordBBox` or `NodeLevel`) and never converts 
+  directly to or from floating-point types.
 - [`CoordBBox`] — an inclusive, axis-aligned bounding box over [`Coord`], with
   enclosing/intersection/iteration and global↔local conversion.
-- [`NodeDim`] / [`TreeDim`] — the per-level geometry and the level chain of a
+- [`NodeLevel`] / [`TreeDim`] — the per-level geometry and the level chain of a
   multi-resolution sparse voxel tree: parent/child navigation, child-coordinate
   enumeration, and overlap queries.
 - [`cube`] — static lookup tables over a unit cube's 8 corners, 12 edges, 6
   faces, and 3×3×3 Moore neighborhood, for voxel and mesh generation.
-- [`VoxGrid`] — the trait describing operations over a grid that may be sparse.
-- [`quantized`] — hashable, integer-backed float storage (**unstable**).
+- [`vox_grid`] — read/write/background/slice traits for sparse and local grids:
+  [`VoxGrid`] (read), [`VoxGridMut`] (write), [`VoxGridBackground`] (background
+  value), and [`VoxGridSlice`] / [`VoxGridSliceMut`] (shared views).
 
 ## Index type
 
-Coordinates are in `i32`/`u32`/`f64`, matching Voxelis and Godot. This is a hard limit outside
-using 128 bit types for float/length. An `f32` doesn't have the precision to fully index the i32 coordinates. Similarly, `i64`/`u64` can't be indexed properly at the root level, because a `usize` cannot contain the full length (off by one). 
-
+- Index Coordinates ([`Coord`], [`LocalCoord`]) are in `i32`/`u32`.
+- Sizes are given as [`glam::U64Vec3`] so they can support the size
+  of the `i32` range (`u32::MAX + 1`)
+- Float types are `f64` to provide the precision to access the entire
+  i32 range.
 
 ## Feature flags
 
@@ -36,7 +53,7 @@ using 128 bit types for float/length. An `f32` doesn't have the precision to ful
 |-------------|:-------:|--------|
 | *(none)*    |   ✓     | N/A |
 | `serde`     |         | Derive `Serialize`/`Deserialize` on the public types. |
-| `bytemuck`  |         | Derive `Pod`/`Zeroable` and enable byte-slice conversions. |
+| `bytemuck`   |          | Derive `Pod`/`Zeroable` and enable byte-slice conversions. |
 
 ## Building & testing
 
@@ -48,11 +65,7 @@ cargo doc --no-deps --all-features
 
 ## Status
 
-This crate is being pulled out of a larger project and refactored to stand
-alone. `Coord` and `CoordBBox` are close to feature complete; the rest of the
-API is still being cleaned up.
+This crate is being pulled from a larger project, and refactored to stand alone.
 
-Planned:
-
-- SDF interactions and integration with `sdfu`.
-- Integrations with various other libraries.
+The crate is mostly stable, with ongoing fixes to documentation, test completeness,
+bugfixes, and api name changes for the sake of clarity.

@@ -106,14 +106,14 @@ macro_rules! add_glam_float_type {
             impl From<$vec_type> for $coord {
                 fn from(v: $vec_type) -> Self {
                     let v = v.round_half_up();
-                    Self(IndexVec::new(v.x as Index, v.y as Index, v.z as Index))
+                    Self(IndexVec::new(v.x as CIndex, v.y as CIndex, v.z as CIndex))
                 }
             }
 
             impl From<&$vec_type> for $coord {
                 fn from(v: &$vec_type) -> Self {
                     let v = v.round_half_up();
-                    Self(IndexVec::new(v.x as Index, v.y as Index, v.z as Index))
+                    Self(IndexVec::new(v.x as CIndex, v.y as CIndex, v.z as CIndex))
                 }
             }
 
@@ -192,7 +192,7 @@ macro_rules! add_int_conversions {
                   }
               }
 
-             #[doc = concat!("Converts ", stringify!($int), " v into a `$coord` with values (v as Index, v as Index, v as Index)")]
+             #[doc = concat!("Converts ", stringify!($int), " v into a `$coord` with values (v as CIndex, v as CIndex, v as CIndex)")]
              impl From<$int> for $coord {
                  fn from(v: $int) -> Self {
                      Self::new(v as $elem, v as $elem, v as $elem)
@@ -327,9 +327,9 @@ macro_rules! add_float_conversions {
              impl From<($float, $float, $float)> for $coord {
                  fn from(value: ($float, $float, $float)) -> Self {
                      Self(IndexVec {
-                         x: round_half_up(value.0.to_f64().unwrap()) as Index,
-                         y: round_half_up(value.1.to_f64().unwrap()) as Index,
-                         z: round_half_up(value.2.to_f64().unwrap()) as Index,
+                         x: round_half_up(value.0.to_f64().unwrap()) as CIndex,
+                         y: round_half_up(value.1.to_f64().unwrap()) as CIndex,
+                         z: round_half_up(value.2.to_f64().unwrap()) as CIndex,
                      })
                  }
              }
@@ -343,9 +343,9 @@ macro_rules! add_float_conversions {
              impl From<[$float;3]> for $coord {
                  fn from(vec: [$float;3]) -> Self {
                      Self::new(
-                         round_half_up(vec[0].to_f64().unwrap()) as Index,
-                         round_half_up(vec[1].to_f64().unwrap()) as Index,
-                         round_half_up(vec[2].to_f64().unwrap()) as Index
+                         round_half_up(vec[0].to_f64().unwrap()) as CIndex,
+                         round_half_up(vec[1].to_f64().unwrap()) as CIndex,
+                         round_half_up(vec[2].to_f64().unwrap()) as CIndex
                      )
                  }
              }
@@ -353,9 +353,9 @@ macro_rules! add_float_conversions {
              impl From<&[$float;3]> for $coord {
                  fn from(vec: &[$float;3]) -> Self {
                      Self::new(
-                         round_half_up(vec[0].to_f64().unwrap()) as Index,
-                         round_half_up(vec[1].to_f64().unwrap()) as Index,
-                         round_half_up(vec[2].to_f64().unwrap()) as Index
+                         round_half_up(vec[0].to_f64().unwrap()) as CIndex,
+                         round_half_up(vec[1].to_f64().unwrap()) as CIndex,
+                         round_half_up(vec[2].to_f64().unwrap()) as CIndex
                      )
                  }
              }
@@ -372,10 +372,10 @@ macro_rules! add_float_conversions {
                   }
               }
 
-             #[doc = concat!("Converts ", stringify!($float), " v floato a `$coord` with values (v as Index, v as Index, v as Index)")]
+             #[doc = concat!("Converts ", stringify!($float), " v floato a `$coord` with values (v as CIndex, v as CIndex, v as CIndex)")]
              impl From<$float> for $coord {
                  fn from(v: $float) -> Self {
-                     Self::new(v as Index, v as Index, v as Index)
+                     Self::new(v as CIndex, v as CIndex, v as CIndex)
                  }
              }
          )+
@@ -390,9 +390,9 @@ macro_rules! float_ops {
                 type Output = Self;
 
                 fn $method(self, rhs: [$float; 3]) -> Self::Output {
-                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap())) as Index;
-                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap())) as Index;
-                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap())) as Index;
+                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap())) as CIndex;
+                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap())) as CIndex;
+                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap())) as CIndex;
 
                     Self::new(x, y, z)
                 }
@@ -405,7 +405,7 @@ macro_rules! float_ops {
                     let mut v = self.as_array();
 
                     for i in 0..rhs.len() {
-                        v[i] = round_half_up((v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap())) as Index;
+                        v[i] = round_half_up((v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap())) as CIndex;
                     }
 
                     v.into()
@@ -416,9 +416,9 @@ macro_rules! float_ops {
                 type Output = Self;
 
                 fn $method(self, rhs: $float) -> Self::Output {
-                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
-                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
-                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
+                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
+                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
+                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
 
                     Self::new(x, y, z)
                 }
@@ -426,9 +426,9 @@ macro_rules! float_ops {
 
             impl std::ops::$assign_trait<[$float; 3]> for $coord {
                 fn $assign_method(&mut self, rhs: [$float; 3]) {
-                    self.x = round_half_up((self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap())) as Index;
-                    self.y = round_half_up((self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap())) as Index;
-                    self.z = round_half_up((self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap())) as Index;
+                    self.x = round_half_up((self.x.to_f64().unwrap() $op rhs[0].to_f64().unwrap())) as CIndex;
+                    self.y = round_half_up((self.y.to_f64().unwrap() $op rhs[1].to_f64().unwrap())) as CIndex;
+                    self.z = round_half_up((self.z.to_f64().unwrap() $op rhs[2].to_f64().unwrap())) as CIndex;
                 }
             }
 
@@ -437,7 +437,7 @@ macro_rules! float_ops {
                     let mut v = self.as_array();
 
                     for i in 0..rhs.len() {
-                        v[i] = round_half_up((v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap())) as Index;
+                        v[i] = round_half_up((v[i].to_f64().unwrap() $op rhs[i].to_f64().unwrap())) as CIndex;
                      }
 
                      *self = v.into()
@@ -446,9 +446,9 @@ macro_rules! float_ops {
 
             impl std::ops::$assign_trait<$float> for $coord {
                 fn $assign_method(&mut self, rhs: $float) {
-                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
-                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
-                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs.to_f64().unwrap())) as Index;
+                    let x = round_half_up((self.x.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
+                    let y = round_half_up((self.y.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
+                    let z = round_half_up((self.z.to_f64().unwrap() $op rhs.to_f64().unwrap())) as CIndex;
 
                     *self = Self::new(x, y, z)
                 }
@@ -470,7 +470,7 @@ macro_rules! add_float_ops {
 
             impl std::cmp::PartialEq<[$float;3]> for $coord {
                 fn eq(&self, rhs: &[$float;3]) -> bool {
-                    self.x == rhs[0] as Index && self.y == rhs[1] as Index && self.z == rhs[2] as Index
+                    self.x == rhs[0] as CIndex && self.y == rhs[1] as CIndex && self.z == rhs[2] as CIndex
                 }
             }
 
