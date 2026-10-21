@@ -12,11 +12,12 @@ categories = ["data-structures", "mathematics", "game-development"]
 
 [features]
 default = []
-serde = ["dep:serde","glam/serde", "half/serde"]
+serde = ["dep:serde", "glam/serde", "half/serde", "bitflags/serde"]
 bytemuck = ["dep:bytemuck","glam/bytemuck"]
 
 [dependencies]
 anyhow = "1.0.104"
+bitflags = "2.9"
 bytemuck = { version = "1.25.2", features = ["derive"], optional = true }
 glam = { version = "0.29.3" }
 half = { version = "2.7.1", features = ["num-traits"] }

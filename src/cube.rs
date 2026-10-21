@@ -47,7 +47,11 @@ use crate::{Coord, FIndex, FIndexVec};
 use glam::U8Vec2;
 use lazy_static::lazy_static;
 use num_enum::IntoPrimitive;
-use std::{panic, slice::Iter};
+use std::{
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign},
+    panic,
+    slice::Iter,
+};
 
 const SQRT_2: f64 = 1.4142135;
 const SQRT_3: f64 = 1.7320508;
@@ -84,6 +88,54 @@ pub enum Side {
     Up,
     South,
     North,
+}
+
+impl BitOr for Side {
+    type Output = FaceFlags;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        FaceFlags::from(self) | FaceFlags::from(rhs)
+    }
+}
+
+impl BitAnd for Side {
+    type Output = FaceFlags;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        FaceFlags::from(self) & FaceFlags::from(rhs)
+    }
+}
+
+impl BitXor for Side {
+    type Output = FaceFlags;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        FaceFlags::from(self) ^ FaceFlags::from(rhs)
+    }
+}
+
+impl BitOr<FaceFlags> for Side {
+    type Output = FaceFlags;
+
+    fn bitor(self, rhs: FaceFlags) -> Self::Output {
+        FaceFlags::from(self) | rhs
+    }
+}
+
+impl BitAnd<FaceFlags> for Side {
+    type Output = FaceFlags;
+
+    fn bitand(self, rhs: FaceFlags) -> Self::Output {
+        FaceFlags::from(self) & rhs
+    }
+}
+
+impl BitXor<FaceFlags> for Side {
+    type Output = FaceFlags;
+
+    fn bitxor(self, rhs: FaceFlags) -> Self::Output {
+        FaceFlags::from(self) ^ rhs
+    }
 }
 
 const VALID_SIDES: [Side; SIDE_COUNT] = [
@@ -805,6 +857,116 @@ pub const OPPOSITE_SIDE: [Side; SIDE_COUNT] = [
     Side::South, // NORTH
 ];
 
+bitflags::bitflags! {
+    /// A set of cube faces, one bit per [`Side`] (bit `i` = the `Side` with
+    /// discriminant `i`).
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    pub struct FaceFlags: u8 {
+        /// `+x`.
+        const EAST = 1 << Side::East as u8;
+        /// `-x`.
+        const WEST = 1 << Side::West as u8;
+        /// `-y`.
+        const DOWN = 1 << Side::Down as u8;
+        /// `+y`.
+        const UP = 1 << Side::Up as u8;
+        /// `-z`.
+        const SOUTH = 1 << Side::South as u8;
+        /// `+z`.
+        const NORTH = 1 << Side::North as u8;
+        /// All six faces.
+        const ALL = Self::EAST.bits()
+            | Self::WEST.bits()
+            | Self::DOWN.bits()
+            | Self::UP.bits()
+            | Self::SOUTH.bits()
+            | Self::NORTH.bits();
+    }
+}
+
+impl FaceFlags {
+    /// The flag for one side.
+    pub const fn from_side(side: Side) -> Self {
+        Self::from_bits_truncate(1 << side as u8)
+    }
+
+    /// The flag for the face on `axis` (`0` = x, `1` = y, `2` = z), on its positive or
+    /// negative side.
+    pub const fn from_axis(axis: usize, positive: bool) -> Self {
+        match (axis, positive) {
+            (0, true) => Self::EAST,
+            (0, false) => Self::WEST,
+            (1, true) => Self::UP,
+            (1, false) => Self::DOWN,
+            (2, true) => Self::NORTH,
+            _ => Self::SOUTH,
+        }
+    }
+
+    /// The set faces as `Side`s, in `Side` order.
+    pub fn sides(self) -> impl Iterator<Item = Side> {
+        Side::all_sides()
+            .copied()
+            .filter(move |side| self.contains(Self::from_side(*side)))
+    }
+
+    /// The set faces as `(axis, positive)` pairs, ordered by axis then positive first.
+    pub fn axes(self) -> impl Iterator<Item = (usize, bool)> {
+        (0..3)
+            .flat_map(|axis| [(axis, true), (axis, false)])
+            .filter(move |&(axis, positive)| self.contains(Self::from_axis(axis, positive)))
+    }
+}
+
+impl From<Side> for FaceFlags {
+    fn from(side: Side) -> Self {
+        Self::from_side(side)
+    }
+}
+
+impl BitOr<Side> for FaceFlags {
+    type Output = FaceFlags;
+
+    fn bitor(self, rhs: Side) -> Self::Output {
+        self | FaceFlags::from(rhs)
+    }
+}
+
+impl BitAnd<Side> for FaceFlags {
+    type Output = FaceFlags;
+
+    fn bitand(self, rhs: Side) -> Self::Output {
+        self & FaceFlags::from(rhs)
+    }
+}
+
+impl BitXor<Side> for FaceFlags {
+    type Output = FaceFlags;
+
+    fn bitxor(self, rhs: Side) -> Self::Output {
+        self ^ FaceFlags::from(rhs)
+    }
+}
+
+impl BitOrAssign<Side> for FaceFlags {
+    fn bitor_assign(&mut self, rhs: Side) {
+        *self |= FaceFlags::from(rhs);
+    }
+}
+
+impl BitAndAssign<Side> for FaceFlags {
+    fn bitand_assign(&mut self, rhs: Side) {
+        *self &= FaceFlags::from(rhs);
+    }
+}
+
+impl BitXorAssign<Side> for FaceFlags {
+    fn bitxor_assign(&mut self, rhs: Side) {
+        *self ^= FaceFlags::from(rhs);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::CIndex;
@@ -1070,5 +1232,42 @@ mod tests {
                 i,
             );
         }
+    }
+
+    #[test]
+    fn face_flags_match_sides() {
+        for side in Side::all_sides() {
+            let n = side.get_normal();
+            let c = [n.x, n.y, n.z];
+            let axis = c.iter().position(|&v| v != 0).unwrap();
+            let flag = FaceFlags::from_side(*side);
+            assert_eq!(flag, FaceFlags::from_axis(axis, c[axis] > 0));
+            assert_eq!(flag, FaceFlags::from(*side));
+            assert_eq!(flag.sides().collect::<Vec<_>>(), vec![*side]);
+        }
+        assert_eq!(FaceFlags::ALL, FaceFlags::all());
+        assert_eq!(FaceFlags::ALL.sides().count(), 6);
+        assert_eq!(
+            (FaceFlags::UP | FaceFlags::WEST).axes().collect::<Vec<_>>(),
+            vec![(0, false), (1, true)]
+        );
+    }
+
+    #[test]
+    fn face_flags_combine_with_sides() {
+        let up_east = FaceFlags::UP | FaceFlags::EAST;
+        assert_eq!(FaceFlags::UP | Side::East, up_east);
+        assert_eq!(Side::East | FaceFlags::UP, up_east);
+        assert_eq!(up_east & Side::Up, FaceFlags::UP);
+        assert_eq!(up_east ^ Side::Up, FaceFlags::EAST);
+
+        let mut flags = FaceFlags::empty();
+        flags |= Side::Up;
+        flags |= Side::East;
+        assert_eq!(flags, up_east);
+        flags ^= Side::East;
+        assert_eq!(flags, FaceFlags::UP);
+        flags &= Side::East;
+        assert!(flags.is_empty());
     }
 }
